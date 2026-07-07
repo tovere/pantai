@@ -1,0 +1,65 @@
+{
+  "name": "web-ele-monorepo-template",
+  "version": "0.1.0",
+  "private": true,
+  "keywords": [
+    "monorepo",
+    "turbo",
+    "vben",
+    "vue3",
+    "admin-template"
+  ],
+  "homepage": "https://example.com",
+  "bugs": "https://example.com/issues",
+  "repository": "example/web-ele-monorepo-template.git",
+  "license": "MIT",
+  "author": {
+    "name": "template",
+    "email": "hello@example.com",
+    "url": "https://example.com"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=8192 turbo build --filter=@vben/web-ele",
+    "build:ele": "pnpm run build --filter=@vben/web-ele",
+    "build:prod": "cross-env NODE_OPTIONS=--max-old-space-size=8192 turbo build:prod --filter=@vben/web-ele",
+    "build:test": "cross-env NODE_OPTIONS=--max-old-space-size=8192 turbo build:test --filter=@vben/web-ele",
+    "check:type": "turbo run typecheck",
+    "dev": "pnpm -F @vben/web-ele run dev",
+    "dev:ele": "pnpm -F @vben/web-ele run dev",
+    "postinstall": "pnpm -r run stub --if-present",
+    "preinstall": "npx only-allow pnpm",
+    "test:unit": "vitest run --dom"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@vben/commitlint-config": "workspace:*",
+    "@vben/eslint-config": "workspace:*",
+    "@vben/prettier-config": "workspace:*",
+    "@vben/stylelint-config": "workspace:*",
+    "@vben/tailwind-config": "workspace:*",
+    "@vben/tsconfig": "workspace:*",
+    "@vben/vite-config": "workspace:*",
+    "@vitejs/plugin-vue": "catalog:",
+    "@vitejs/plugin-vue-jsx": "catalog:",
+    "@vue/test-utils": "catalog:",
+    "autoprefixer": "catalog:",
+    "cross-env": "catalog:",
+    "happy-dom": "catalog:",
+    "is-ci": "catalog:",
+    "lefthook": "catalog:",
+    "tailwindcss": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:",
+    "unbuild": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:",
+    "vue": "catalog:",
+    "vue-tsc": "catalog:"
+  },
+  "engines": {
+    "node": ">=20.19.0",
+    "pnpm": ">=10.0.0"
+  },
+  "packageManager": "pnpm@10.28.2"
+}

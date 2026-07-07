@@ -1,0 +1,33 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ===== 行情缓存(大, 可用 cache_data.py 重新拉取, 勿提交)=====
+/data_cache/*
+# 但保留每日命中记录作为历史存档(小)
+!/data_cache/watch_history/
+# 盯盘台运行时聚合结果(重跑即生成)
+watch_data.json
+
+# ===== 前端 dashboard(vben monorepo)=====
+dashboard/**/node_modules/
+dashboard/**/dist/
+dashboard/**/.turbo/
+dashboard/**/*.tsbuildinfo
+dashboard/**/.nitro/
+dashboard/**/.output/
+
+# ===== 系统 / 编辑器 =====
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+*.swp
+
+# ===== 临时 =====
+*.tmp
+scratchpad/
