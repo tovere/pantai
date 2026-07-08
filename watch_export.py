@@ -83,10 +83,11 @@ def _levels(strategy, hit):
 
 
 def _ensure_screen_date():
-    if "SCREEN_DATE" not in os.environ:
-        ref = cache_data.daily_kline("0.000001")
-        if ref:
-            os.environ["SCREEN_DATE"] = ref[-1][0]
+    # 始终对齐到缓存最新交易日。长驻 server 进程里 SCREEN_DATE 会残留旧值(如昨天),
+    # 缓存进入新一天后若不更新, 筛选器的 D[i]!=TODAY 会把全部票挡掉 -> 全0。
+    ref = cache_data.daily_kline("0.000001")
+    if ref:
+        os.environ["SCREEN_DATE"] = ref[-1][0]
 
 
 def enrich_section(key, raw):
