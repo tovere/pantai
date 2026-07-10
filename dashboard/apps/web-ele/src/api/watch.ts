@@ -39,6 +39,17 @@ export interface WatchHit {
   vol_ratio?: number;
   coil?: string;
   stop?: number;
+  // 策略七(Spring二买背驰)字段
+  range_low?: number;
+  spring_low?: number;
+  spring_date?: string;
+  up_from_spring?: number;
+  div_pct?: number;
+  // 策略八(N字反包)字段
+  peak?: number;
+  pull_low?: number;
+  shrink?: number;
+  vexp?: number;
 }
 
 export interface WatchSection {

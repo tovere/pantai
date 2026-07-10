@@ -150,6 +150,7 @@ def check(code, name, rows):
         "spring_low": round(sig["spring_low"], 2),
         "spring_date": D[sig["sp"]][5:],
         "up_from_spring": round(sig["up_from_spring"] * 100, 1),
+        "div_pct": round(sig["div"] / C[i] * 100, 2),  # 背驰强度(DIF差/价), ≥0.5%过门槛
         "stop": round(sig["spring_low"] * 0.99, 2),
         "amt": round(A[i] / 1e8, 1),
     }
@@ -178,6 +179,16 @@ def main():
                 print(f"  {done}/{len(uni)} 命中{len(hits)}", flush=True)
 
     hits.sort(key=lambda x: (x["up_from_spring"], -x["amt"]))
+    _dump = os.environ.get("WATCH_JSON_OUT")
+    if _dump:
+        import json as _json
+        _json.dump({
+            "strategy": "spring_2buy",
+            "variant": "etf" if INCLUDE_ETF else "stock",
+            "is_etf": INCLUDE_ETF,
+            "date": TODAY,
+            "hits": hits,
+        }, open(_dump, "w"), ensure_ascii=False)
     print(f"\n>>> 今日({TODAY}) Spring/二买+底背驰 命中 {len(hits)} 只\n")
     print("代码    名称        现价   今日%  区间下沿 Spring低 Spring日 离Spring% 止损   额(亿)")
     for h in hits[:50]:

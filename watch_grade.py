@@ -194,9 +194,100 @@ def grade_squeeze(hit, bars):
     return {"grade": grade, "score": score, "flags": flags, "note": note}
 
 
+def grade_spring(hit, bars):
+    """策略七(威科夫Spring+二买+底背驰)评级。核心看背驰强度, 兼顾离Spring距离/量价。"""
+    flags, score = [], 0
+    div = _f(hit.get("div_pct"))       # 背驰强度%(≥0.5过门槛)
+    up = _f(hit.get("up_from_spring"))  # 离Spring低多远%
+    amt = _f(hit.get("amt"))
+
+    # 背驰强度: 越强越好(动能衰竭越明显, Spring 越有效)
+    if div >= 1.0:
+        score += 2
+        flags.append({"text": f"强背驰({div:.1f}%)", "type": "good"})
+    elif div >= 0.5:
+        score += 1
+        flags.append({"text": f"背驰达标({div:.1f}%)", "type": "good"})
+
+    # 离Spring距离: 贴近Spring=低吸/风险小; 太远=已拉起追高
+    if up <= 5:
+        score += 1
+        flags.append({"text": f"贴Spring({up:.0f}%)", "type": "good"})
+    elif up >= 15:
+        score -= 1
+        flags.append({"text": f"离Spring远(+{up:.0f}%)", "type": "warn"})
+
+    # 流动性
+    if amt and amt < 1.5:
+        score -= 1
+        flags.append({"text": f"量能偏小({amt:.1f}亿)", "type": "warn"})
+
+    # 今日冲高回落(红旗)
+    if _rejection(bars):
+        score -= 2
+        flags.append({"text": "冲高回落", "type": "bad"})
+
+    grade = _decide(score, flags)
+    if grade == "A":
+        note = "强背驰+贴Spring, 二买质量高"
+    elif any(f["type"] == "bad" for f in flags):
+        note = "命中但今日盘口减分, 观察确认"
+    elif grade == "B":
+        note = "Spring二买候选, 背驰达标"
+    else:
+        note = "偏弱: 背驰一般或离Spring较远"
+    return {"grade": grade, "score": score, "flags": flags, "note": note}
+
+
+def grade_nzi(hit, bars):
+    """策略八(N字反包)评级: 反包力度(放量)+ 洗盘干净(缩量)+ 歇够久 + 止损距离/量能。"""
+    flags, score = [], 0
+    vexp = _f(hit.get("vexp"))       # 放量倍
+    shrink = _f(hit.get("shrink"))    # 回调缩量比
+    pull = int(hit.get("pull_days", 0))
+    amt = _f(hit.get("amt"))
+    close, stop = _f(hit.get("close")), _f(hit.get("stop"))
+
+    if vexp >= 2.5:
+        score += 1
+        flags.append({"text": f"强反包({vexp:.1f}x量)", "type": "good"})
+    if shrink and shrink <= 0.7:
+        score += 1
+        flags.append({"text": "洗盘干净", "type": "good"})
+    if pull >= 6:
+        score += 1
+        flags.append({"text": f"歇足{pull}天", "type": "good"})
+
+    # 止损距离(风控): 贴回踩低=盈亏比好; 太远=风险大
+    risk = (close - stop) / close * 100 if close else 99
+    if 0 < risk <= 4:
+        score += 1
+        flags.append({"text": f"止损近(-{risk:.0f}%)", "type": "good"})
+    elif risk > 8:
+        score -= 1
+        flags.append({"text": f"止损偏远(-{risk:.0f}%)", "type": "warn"})
+
+    if amt and amt < 1.5:
+        score -= 1
+        flags.append({"text": f"量能偏小({amt:.1f}亿)", "type": "warn"})
+
+    grade = _decide(score, flags)
+    if grade == "A":
+        note = "缩量歇足+强放量反包, 中继质量高"
+    elif grade == "B":
+        note = "N字反包候选, 放量确认"
+    else:
+        note = "偏弱: 反包力度或止损距离一般"
+    return {"grade": grade, "score": score, "flags": flags, "note": note}
+
+
 def grade(strategy, hit, bars):
     if strategy == "chan_wyckoff_3buy":
         return grade_three_buy(hit, bars)
     if strategy == "squeeze_launch":
         return grade_squeeze(hit, bars)
+    if strategy == "spring_2buy":
+        return grade_spring(hit, bars)
+    if strategy == "nzi_reversal":
+        return grade_nzi(hit, bars)
     return {"grade": "C", "score": 0, "flags": [], "note": ""}

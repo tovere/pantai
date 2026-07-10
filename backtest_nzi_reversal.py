@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""策略七验证: 威科夫 Spring + 缠论二买(底背驰) —— 底部转折买点。
-
-止损贴 Spring 低点下方(极紧); 启动后移动止损让利润奔跑; 拆分过滤。
-"""
+"""策略八 N字反包 回测。出场借策略六: 回踩低硬止损 → 未续涨时间止损 → 续涨后移动止损。"""
 import os
 import statistics
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import cache_data
 import screen_chan_wyckoff_3buy as chan
-import screen_spring_2buy as sp
+import screen_nzi_reversal as nz
 
 START = os.environ.get("START", "2025-07-01")
 END = os.environ.get("END", "2026-06-26")
 COST = 0.001
-MAX_HOLD = int(os.environ.get("MAX_HOLD", "40"))
-TRAIL_PCT = float(os.environ.get("TRAIL_PCT", "0.10"))     # 底部转折给多一点波动空间
+MAX_HOLD = int(os.environ.get("MAX_HOLD", "30"))
+FAST_DAYS = int(os.environ.get("FAST_DAYS", "6"))
+ACCEL_RET = float(os.environ.get("ACCEL_RET", "0.12"))
+REQUIRE_WEEKLY_UP = os.environ.get("REQUIRE_WEEKLY_UP", "1") != "0"
 LAUNCH_RET = float(os.environ.get("LAUNCH_RET", "0.05"))
-LAUNCH_WAIT = int(os.environ.get("LAUNCH_WAIT", "4"))      # 洗盘后不启动就早撤(实测比8好)
+LAUNCH_WAIT = int(os.environ.get("LAUNCH_WAIT", "5"))
+TRAIL_PCT = float(os.environ.get("TRAIL_PCT", "0.08"))
 GAP_LIMIT = float(os.environ.get("GAP_LIMIT", "0.20"))
-INCLUDE_ETF = os.environ.get("INCLUDE_ETF", "0") != "0"
-ETF_ONLY = os.environ.get("ETF_ONLY", "0") != "0"  # 纯ETF池(优先于INCLUDE_ETF)
 
 
 def _has_gap(O, C, a, b):
@@ -41,22 +39,22 @@ def signal_at(code, name, rows, i):
     L = [float(r[4]) for r in rows[: i + 1]]
     V = [float(r[5]) for r in rows[: i + 1]]
     A = [float(r[6]) for r in rows[: i + 1]]
-    if not (START <= D[-1] <= END) or A[-1] < sp.MIN_AMOUNT:
+    if not (START <= D[-1] <= END) or A[-1] < nz.MIN_AMOUNT:
         return None
-    if not sp.weekly_ok(D, O, H, L, C, V, A):
-        return None
-    dif = sp.macd_dif(C)
-    sig = sp.spring_signal(O, H, L, C, V, dif, i)
+    if REQUIRE_WEEKLY_UP:
+        w = chan.weekly_up_state(D, O, H, L, C, V, A)
+        if not w or not w["up"]:
+            return None
+    sig = nz.nzi_signal(O, H, L, C, V, i)
     if not sig:
         return None
+    # 去重: 昨日若已是反包信号则不重复记(避免连续两日同一反包计两次)
+    if nz.nzi_signal(O[:-1], H[:-1], L[:-1], C[:-1], V[:-1], i - 1):
+        return None
     return {
-        "date": D[i],
-        "code": code,
-        "name": name,
-        "entry": C[i],
-        "spring_low": sig["spring_low"],
-        "div": sig["div"],
-        "up_from_spring": sig["up_from_spring"],
+        "date": D[i], "code": code, "name": name, "entry": C[i],
+        "pull_low": sig["pull_low"], "pull_days": sig["pull_days"],
+        "shrink": sig["shrink"], "runup": sig["runup"],
     }
 
 
@@ -66,11 +64,9 @@ def exit_trade(rows, i, rec):
     H = [float(r[3]) for r in rows]
     L = [float(r[4]) for r in rows]
     entry = rec["entry"]
-    hard_stop = rec["spring_low"] * 0.99
+    hard_stop = rec["pull_low"] * 0.99
     end = min(len(rows) - 1, i + MAX_HOLD)
-    launched = False
-    peak = H[i]
-    worst = 0.0
+    launched, peak, worst = False, H[i], 0.0
     for j in range(i + 1, end + 1):
         if C[j - 1] > 0 and abs(O[j] / C[j - 1] - 1) > GAP_LIMIT:
             return j, 0.0, "split", worst
@@ -90,20 +86,28 @@ def exit_trade(rows, i, rec):
 
 def run_one(code, name, secid):
     rows = cache_data.daily_kline(secid)
-    if not rows or len(rows) < 110:
+    if not rows or len(rows) < 100:
         return []
     O = [float(r[1]) for r in rows]
     C = [float(r[2]) for r in rows]
     out = []
-    for i in range(75, len(rows) - 3):
+    for i in range(78, len(rows) - 3):
         rec = signal_at(code, name, rows, i)
         if not rec:
             continue
-        if _has_gap(O, C, i - 70, i):
+        if _has_gap(O, C, i - 60, i):
             continue
         j, sell, reason, mae = exit_trade(rows, i, rec)
         if reason == "split":
             continue
+        fwd_end = min(len(rows) - 1, i + FAST_DAYS)
+        k_end = i
+        for k in range(i + 1, fwd_end + 1):
+            if C[k - 1] > 0 and abs(O[k] / C[k - 1] - 1) > GAP_LIMIT:
+                break
+            k_end = k
+        fwd_max = max((C[k] / rec["entry"] - 1 for k in range(i + 1, k_end + 1)), default=0.0)
+        rec["accel"] = 1 if fwd_max >= ACCEL_RET else 0
         rec["exit"] = rows[j][0]
         rec["reason"] = reason
         rec["held"] = j - i
@@ -113,14 +117,32 @@ def run_one(code, name, secid):
     return out
 
 
+def _bucket_runup(x):
+    if x < 0.25:
+        return "前涨<25%"
+    if x < 0.50:
+        return "前涨25-50%"
+    return "前涨>=50%"
+
+
+def _line(name, ts):
+    rs = [t["ret"] for t in ts]
+    maes = [t["mae"] for t in ts]
+    return (
+        f"  {name:<12} {len(ts):>4}笔  胜率 {sum(1 for v in rs if v>0)/len(rs)*100:5.1f}%  "
+        f"均值 {statistics.mean(rs)*100:+6.2f}%  中位 {statistics.median(rs)*100:+6.2f}%  "
+        f"MAE {statistics.mean(maes)*100:+6.2f}%"
+    )
+
+
 def summarize(trades):
-    print(f"\n>> 策略七验证 {START}~{END}  信号 {len(trades)} 笔  (Spring+二买+底背驰, 移动止损)\n")
+    print(f"\n>> 策略八(N字反包)验证 {START}~{END}  信号 {len(trades)} 笔\n")
     if not trades:
         return
     rs = [t["ret"] for t in trades]
     maes = [t["mae"] for t in trades]
     print(
-        f"整体  胜率 {sum(1 for v in rs if v > 0)/len(rs)*100:5.1f}%  "
+        f"整体  胜率 {sum(1 for v in rs if v>0)/len(rs)*100:5.1f}%  "
         f"均值 {statistics.mean(rs)*100:+6.2f}%  中位 {statistics.median(rs)*100:+6.2f}%  "
         f"平均持有 {statistics.mean(t['held'] for t in trades):.1f}天  MAE {statistics.mean(maes)*100:+6.2f}%  "
         f"最好/最差 {max(rs)*100:+.1f}%/{min(rs)*100:+.1f}%"
@@ -131,8 +153,22 @@ def summarize(trades):
     print("\n出场原因:")
     for reason, vals in sorted(by_reason.items(), key=lambda x: -len(x[1])):
         print(f"  {reason:<12} {len(vals):>4}笔  胜率 {sum(1 for v in vals if v>0)/len(vals)*100:5.1f}%  均值 {statistics.mean(vals)*100:+6.2f}%")
+
+    def group(keyfn, title, order=None):
+        g = {}
+        for t in trades:
+            g.setdefault(keyfn(t), []).append(t)
+        print(f"\n按{title}:")
+        for k in (order or sorted(g.keys())):
+            if k in g:
+                _line_out = _line(str(k), g[k])
+                print(_line_out)
+
+    group(lambda t: f"回调{t['pull_days']}天", "回调天数")
+    group(lambda t: _bucket_runup(t["runup"]), "前期涨幅档", ["前涨<25%", "前涨25-50%", "前涨>=50%"])
+
     sample = sorted(trades, key=lambda x: x["date"])[-15:]
-    print("\n最近15笔信号:")
+    print("\n最近15笔:")
     for t in sample:
         print(
             f"{t['date']} {t['code']} {t['name'][:6]:<6} entry={t['entry']:.2f} "
@@ -141,23 +177,14 @@ def summarize(trades):
 
 
 def main():
-    if ETF_ONLY:
-        U = cache_data.etf_universe()
-    elif INCLUDE_ETF:
-        U = cache_data.universe() + cache_data.etf_universe()
-    else:
-        U = cache_data.universe()
-    _tag = " (纯ETF)" if ETF_ONLY else (" + ETF" if INCLUDE_ETF else "")
-    print(f"标的池 {len(U)} 只{_tag}，策略七(Spring/二买+背驰)验证中...", flush=True)
+    U = cache_data.universe()
+    print(f"标的池 {len(U)} 只，策略八(N字反包)验证中...", flush=True)
     trades, done = [], 0
     with ThreadPoolExecutor(max_workers=8) as ex:
         futs = {ex.submit(run_one, c, n, s): c for c, n, s in U}
         for fut in as_completed(futs):
             done += 1
-            try:
-                trades.extend(fut.result())
-            except Exception:
-                pass
+            trades.extend(fut.result())
             if done % 500 == 0:
                 print(f"  {done}/{len(U)} 信号{len(trades)}", flush=True)
     summarize(trades)

@@ -8,6 +8,9 @@ import KlineChart from './KlineChart.vue';
 const props = defineProps<{ section: WatchSection }>();
 
 const isS5 = computed(() => props.section.strategy === 'chan_wyckoff_3buy');
+const isS6 = computed(() => props.section.strategy === 'squeeze_launch');
+const isS7 = computed(() => props.section.strategy === 'spring_2buy');
+const isS8 = computed(() => props.section.strategy === 'nzi_reversal');
 
 const GRADE_TYPE: Record<string, string> = {
   A: 'success',
@@ -105,7 +108,7 @@ function sign(v: number | undefined, digits = 1) {
     </template>
 
     <!-- 策略六 列 -->
-    <template v-else>
+    <template v-else-if="isS6">
       <el-table-column label="压缩分" width="64" align="right" prop="score" />
       <el-table-column label="距MA60" width="72" align="right">
         <template #default="{ row }">{{ sign(row.bias60) }}%</template>
@@ -118,6 +121,49 @@ function sign(v: number | undefined, digits = 1) {
       </el-table-column>
       <el-table-column label="蓄势区" width="118" align="center">
         <template #default="{ row }">{{ row.coil }}</template>
+      </el-table-column>
+      <el-table-column label="止损" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.stop) }}</template>
+      </el-table-column>
+    </template>
+
+    <!-- 策略七 列 -->
+    <template v-else-if="isS7">
+      <el-table-column label="背驰%" width="70" align="right">
+        <template #default="{ row }">{{ fmt(row.div_pct) }}</template>
+      </el-table-column>
+      <el-table-column label="离Spring" width="80" align="right">
+        <template #default="{ row }">{{ sign(row.up_from_spring) }}%</template>
+      </el-table-column>
+      <el-table-column label="Spring低" width="80" align="right">
+        <template #default="{ row }">{{ fmt(row.spring_low) }}</template>
+      </el-table-column>
+      <el-table-column label="Spring日" width="72" align="center" prop="spring_date" />
+      <el-table-column label="区间下沿" width="80" align="right">
+        <template #default="{ row }">{{ fmt(row.range_low) }}</template>
+      </el-table-column>
+      <el-table-column label="止损" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.stop) }}</template>
+      </el-table-column>
+    </template>
+
+    <!-- 策略八 列 -->
+    <template v-else-if="isS8">
+      <el-table-column label="放量倍" width="70" align="right">
+        <template #default="{ row }">{{ fmt(row.vexp, 1) }}x</template>
+      </el-table-column>
+      <el-table-column label="缩量比" width="66" align="right">
+        <template #default="{ row }">{{ fmt(row.shrink) }}</template>
+      </el-table-column>
+      <el-table-column label="回调天" width="66" align="right" prop="pull_days" />
+      <el-table-column label="前高" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.peak) }}</template>
+      </el-table-column>
+      <el-table-column label="回踩低" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.pull_low) }}</template>
+      </el-table-column>
+      <el-table-column label="前涨%" width="66" align="right">
+        <template #default="{ row }">{{ sign(row.runup) }}</template>
       </el-table-column>
       <el-table-column label="止损" width="72" align="right">
         <template #default="{ row }">{{ fmt(row.stop) }}</template>

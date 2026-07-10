@@ -19,6 +19,9 @@ const loading = ref(false);
 const activeTab = ref('');
 
 let timer: any = null;
+// 我主动发起、等待刷新的任务 key。用于捕捉 0.1s 秒退的 ETF —— 这类任务
+// 完成得比一次轮询(1200ms)还快，仅靠"目击 running→done"会漏刷新。
+const pending = new Set<string>();
 
 const cards = computed(() => {
   const s = data.value?.summary;
@@ -59,6 +62,11 @@ async function pollJobs() {
       if (prev && prev.status === 'running' && j.status !== 'running') {
         finished = true;
       }
+      // 我发起的任务已到终态（done/error）→ 刷新，即便从没目击到 running
+      if (pending.has(j.key) && j.status !== 'running') {
+        finished = true;
+        pending.delete(j.key);
+      }
     }
     jobs.value = next;
     if (finished) await load(); // 有任务刚跑完 → 刷新数据
@@ -70,12 +78,14 @@ async function pollJobs() {
 }
 
 async function runOne(key: string) {
+  pending.add(key);
   await runVariantApi(key);
   ElMessage.info('已开始，进度见下方');
   await pollJobs();
 }
 
 async function runAll() {
+  for (const s of data.value?.sections ?? []) pending.add(s.key);
   await runVariantApi('all');
   ElMessage.info('已开始全部重跑（顺序执行）');
   await pollJobs();

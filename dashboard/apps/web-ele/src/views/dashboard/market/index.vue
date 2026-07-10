@@ -73,6 +73,12 @@ const covColor = computed(() => {
 });
 // 新鲜度: 30分钟内算新鲜
 const fresh = computed(() => (status.value?.agoMinutes ?? 9999) <= 30);
+// 个股缓存数 = 磁盘缓存总数 − ETF 数(缓存标的数分列展示用)
+const stockCount = computed(() => {
+  const total = status.value?.dailyCount;
+  if (total == null) return null;
+  return total - (status.value?.etfCount ?? 0);
+});
 
 async function pull() {
   try {
@@ -136,7 +142,10 @@ onUnmounted(() => timer && clearTimeout(timer));
           <div class="stat-val" :style="{ color: covColor }">
             {{ status?.coveragePct ?? '-' }}%
           </div>
-          <div class="stat-label">
+          <div
+            class="stat-label"
+            :title="`从磁盘缓存中固定随机抽 ${status?.sampleSize ?? 0} 只，其中最新K线日期=最新交易日(${status?.latestDay || '-'})的占比。其余多为停牌/退市。抽样估计，非全量逐只统计。`"
+          >
             覆盖率<span class="dim">（抽样 {{ status?.sampleSize ?? 0 }}）</span>
           </div>
         </div>
@@ -151,8 +160,9 @@ onUnmounted(() => timer && clearTimeout(timer));
         </div>
         <div class="stat">
           <div class="stat-val">
-            {{ status?.dailyCount ?? '-' }}
-            <span class="dim sm">+{{ status?.etfCount ?? 0 }} ETF</span>
+            {{ stockCount ?? '-' }}<span class="dim sm"> 个股</span>
+            <span class="sep">/</span>
+            {{ status?.etfCount ?? 0 }}<span class="dim sm"> ETF</span>
           </div>
           <div class="stat-label">缓存标的数</div>
         </div>
@@ -306,6 +316,11 @@ onUnmounted(() => timer && clearTimeout(timer));
 .stat-val .sm {
   font-size: 13px;
   font-weight: 500;
+}
+.stat-val .sep {
+  margin: 0 6px;
+  font-weight: 400;
+  color: var(--el-text-color-secondary);
 }
 .stat-label {
   margin-top: 4px;

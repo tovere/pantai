@@ -37,6 +37,8 @@ VARIANTS = {
     "s5_etf_strict":   ("screen_chan_wyckoff_3buy.py", "策略五·ETF·严格(狙击)", {"ETF_ONLY": "1", "STRICT_BUY": "1"}),
     "s6_stock":        ("screen_squeeze_launch.py",    "策略六·个股·压缩蓄势", {}),
     "s6_etf":          ("screen_squeeze_launch.py",    "策略六·ETF·压缩蓄势", {"ETF_ONLY": "1"}),
+    "s7_stock":        ("screen_spring_2buy.py",       "策略七·个股·Spring二买背驰", {}),
+    "s8_stock":        ("screen_nzi_reversal.py",      "策略八·个股·N字反包", {}),
 }
 VKEYS = list(VARIANTS.keys())
 
@@ -79,6 +81,12 @@ def _levels(strategy, hit):
             except ValueError:
                 lo = hi = None
         return {"蓄势上沿": hi, "蓄势下沿": lo, "止损": hit.get("stop")}
+    if strategy == "spring_2buy":
+        return {"区间下沿": hit.get("range_low"), "Spring低": hit.get("spring_low"),
+                "止损": hit.get("stop")}
+    if strategy == "nzi_reversal":
+        return {"前高": hit.get("peak"), "回踩低": hit.get("pull_low"),
+                "止损": hit.get("stop")}
     return {}
 
 
@@ -129,6 +137,7 @@ def run_variant_live(key, progress_cb=None):
     script, title, env_extra = VARIANTS[key]
     env = dict(os.environ)
     env.update(env_extra)
+    env["CACHE_ONLY"] = "1"  # 筛选只读缓存, 不逐只现拉(缺数据的票跳过, 由全量重拉补)
     fd, path = tempfile.mkstemp(suffix=".json", prefix="watch_")
     os.close(fd)
     env["WATCH_JSON_OUT"] = path
