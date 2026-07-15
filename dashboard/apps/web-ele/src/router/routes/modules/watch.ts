@@ -40,6 +40,35 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
+  {
+    meta: {
+      icon: 'lucide:timer',
+      order: -1,
+      title: '30F',
+    },
+    name: 'Min30',
+    path: '/min',
+    children: [
+      {
+        name: 'Min30Board',
+        path: '/min/board',
+        component: () => import('#/views/dashboard/min-watch/index.vue'),
+        meta: {
+          icon: 'lucide:line-chart',
+          title: '30F盯盘',
+        },
+      },
+      {
+        name: 'Min30Data',
+        path: '/min/data',
+        component: () => import('#/views/dashboard/min-data/index.vue'),
+        meta: {
+          icon: 'lucide:database',
+          title: '30F数据',
+        },
+      },
+    ],
+  },
 ];
 
 export default routes;

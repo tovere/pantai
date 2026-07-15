@@ -172,7 +172,8 @@ def _fetch_daily(secid, beg=None, allow_sina=True):
     b = f"{beg[:4]}-{beg[4:6]}-{beg[6:8]}" if len(beg) == 8 and beg.isdigit() else beg
     sym = _tx_code(secid)
     url = (
-        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+        # 用裸域 ifzq.gtimg.cn: web.ifzq.gtimg.cn 有 WAF, 高并发全量会被 501 拦
+        "https://ifzq.gtimg.cn/appstock/app/fqkline/get"
         f"?param={sym},day,{b},2050-01-01,640,qfq"
     )
     node = _get_json(url, tries=3, timeout=8).get("data", {}).get(sym, {})
@@ -279,19 +280,27 @@ def _min_path(secid, klt):
     return MIN_DIR / str(klt) / f"{secid}.json"
 
 
-def _fetch_min(secid, klt, beg="20250101"):
-    """分钟K线(klt=5/30/...)。东财接口只回最近约1.5个月滚动窗口, beg 基本无效。
-    字段与日线一致: f51..f57 -> 时间,开,收,高,低,量,额 (时间形如 'YYYY-MM-DD HH:MM')。"""
-    url = (
-        "https://push2his.eastmoney.com/api/qt/stock/kline/get"
-        f"?secid={secid}&fields1=f1,f2,f3,f4,f5,f6"
-        "&fields2=f51,f52,f53,f54,f55,f56,f57"
-        f"&klt={klt}&fqt=1&beg={beg}&end=20500101"
-    )
-    data = _get_json(url, tries=3, timeout=8).get("data")
-    if not data or not data.get("klines"):
-        return None
-    return data["klines"]
+def _fetch_min(secid, klt, beg=None):
+    """腾讯分钟K线(ifzq/mkline, 裸域无WAF)。klt=5/15/30/60。
+    不复权(腾讯分钟无前复权源; 40天滚动窗口内除权影响极小, 短线够用)。
+    返回 klines: 每根 '时间,开,收,高,低,量,额'(时间 'YYYY-MM-DD HH:MM';
+    腾讯分钟不带成交额, 额=收盘×量×100 估算)。单次最多约 320 根(≈40 交易日),
+    靠 _merge_klines 逐次累积可突破此窗口。"""
+    sym = _tx_code(secid)
+    url = f"https://ifzq.gtimg.cn/appstock/app/kline/mkline?param={sym},m{klt},,320"
+    node = _get_json(url, tries=3, timeout=8).get("data", {}).get(sym, {})
+    rows = node.get(f"m{klt}") or []
+    out = []
+    for r in rows:
+        try:
+            ts, o, c, h, l, v = r[0], r[1], r[2], r[3], r[4], float(r[5])
+        except (IndexError, ValueError):
+            continue
+        # 202607151500 -> '2026-07-15 15:00'
+        t = f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}"
+        amount = float(c) * v * 100.0
+        out.append(f"{t},{o},{c},{h},{l},{v:.0f},{amount:.3f}")
+    return out or None
 
 
 def _merge_klines(old, new):
@@ -538,21 +547,25 @@ def warmup_recent(max_workers=10, days=20, min_age_sec=120):
     print(f"cache fast-update done: {ok}/{total} (跳过 {skipped} 只刚拉过)")
 
 
-def warmup_minute(klts=MIN_KLTS, max_workers=10):
+def warmup_minute(klts=MIN_KLTS, max_workers=10, force=True, include_etf=True):
+    """全市场分钟K线拉取+累积。force=True 每次都重取最近窗口(盘中刷新新形成的bar);
+    腾讯 mkline 每次给最近~320根, _merge_klines 幂等去重, 反复刷不会重复。"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    items = universe()
+    items = universe() + (etf_universe() if include_etf else [])
+    total = len(items)
     for klt in klts:
         done = ok = 0
+        print(f"  [klt={klt}] cached 0/{total}", flush=True)
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futs = {ex.submit(min_kline, sec, klt): sec for _, _, sec in items}
+            futs = {ex.submit(min_kline, sec, klt, force): sec for _, _, sec in items}
             for fut in as_completed(futs):
                 done += 1
                 if fut.result():
                     ok += 1
-                if done % 500 == 0:
-                    print(f"  [klt={klt}] cached {done}/{len(items)} ok={ok}", flush=True)
-        print(f"minute warmup done klt={klt}: {ok}/{len(items)}")
+                if done % 500 == 0 or done == total:
+                    print(f"  [klt={klt}] cached {done}/{total} ok={ok}", flush=True)
+        print(f"minute warmup done klt={klt}: {ok}/{total}")
 
 
 if __name__ == "__main__":

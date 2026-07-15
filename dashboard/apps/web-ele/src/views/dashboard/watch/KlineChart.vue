@@ -61,6 +61,30 @@ onMounted(() => {
       trigger: 'axis',
       axisPointer: { type: 'cross' },
       confine: true, // 锁在图表框内, 避免靠右/靠上时被容器边界裁掉
+      formatter: (params: any) => {
+        const list = Array.isArray(params) ? params : [params];
+        const idx = list[0]?.dataIndex ?? 0;
+        const b = bars[idx];
+        if (!b) return '';
+        const [date, open, close, high, low, vol] = b;
+        const prev = idx > 0 ? bars[idx - 1]![2] : close;
+        const chg = prev ? ((close - prev) / prev) * 100 : 0;
+        const col = chg >= 0 ? '#ef4444' : '#22c55e'; // 红涨绿跌
+        const mas = list
+          .filter((p: any) => p.seriesName?.startsWith('MA') && typeof p.value === 'number')
+          .map((p: any) => `${p.seriesName} ${p.value}`)
+          .join('　');
+        return [
+          `<b>${date}</b>`,
+          `<span style="color:${col};font-weight:600">涨跌 ${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>`,
+          `开 ${open}　收 ${close}`,
+          `高 ${high}　低 ${low}`,
+          `量 ${Number(vol).toLocaleString()}`,
+          mas,
+        ]
+          .filter(Boolean)
+          .join('<br/>');
+      },
     },
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
     // 缩放: 滚轮/拖拽(inside) + 底部滑块(slider); K线与成交量 x 轴联动

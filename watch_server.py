@@ -21,6 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import watch_export
+import watch_export_30f
 
 PORT = int(os.environ.get("PORT", "5320"))
 HERE = watch_export.HERE
@@ -110,6 +111,60 @@ def _run_cache_update(fast=False):
                  finishedAt=watch_export.now_bj().strftime("%H:%M:%S"))
 
 
+# ---- 30f (30分钟级别) 任务 ----
+def _run_variant_30f(key):
+    jk = "m30:" + key
+    if _running(jk):
+        return
+    label = watch_export_30f.VARIANTS_30F[key][1]
+    _job_set(jk, label=label, kind="variant30f", status="running",
+             done=0, total=0, pct=0, error=None,
+             startedAt=watch_export.now_bj().strftime("%H:%M:%S"), finishedAt=None)
+
+    def cb(done, total):
+        _job_set(jk, done=done, total=total)
+
+    try:
+        section = watch_export_30f.run_variant_live(key, cb)
+        watch_export_30f.merge_section(section)
+        _job_set(jk, status="done", done=section["count"] or 1,
+                 total=section["count"] or 1,
+                 finishedAt=watch_export.now_bj().strftime("%H:%M:%S"),
+                 error=section.get("error"))
+    except Exception as e:
+        _job_set(jk, status="error", error=str(e),
+                 finishedAt=watch_export.now_bj().strftime("%H:%M:%S"))
+
+
+def _run_all_30f():
+    for key in watch_export_30f.VKEYS_30F:
+        _run_variant_30f(key)
+
+
+def _run_min_update():
+    key = "m30:cache"
+    if _running(key):
+        return
+    _job_set(key, label="30分K线刷新", kind="min_cache", status="running",
+             done=0, total=0, pct=0, error=None,
+             startedAt=watch_export.now_bj().strftime("%H:%M:%S"), finishedAt=None)
+    code = "import cache_data; cache_data.warmup_minute(klts=(30,), max_workers=20)"
+    try:
+        proc = subprocess.Popen(["python3", "-c", code], cwd=HERE,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, bufsize=1)
+        for line in proc.stdout:
+            m = re.search(r"cached (\d+)/(\d+)", line)
+            if m:
+                _job_set(key, done=int(m.group(1)), total=int(m.group(2)))
+        proc.wait(timeout=1800)
+        _job_set(key, status="done",
+                 finishedAt=watch_export.now_bj().strftime("%H:%M:%S"))
+    except Exception as e:
+        _job_set(key, status="error", error=str(e),
+                 finishedAt=watch_export.now_bj().strftime("%H:%M:%S"))
+
+
 def _spawn(target, *args):
     threading.Thread(target=target, args=args, daemon=True).start()
 
@@ -150,6 +205,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(list(JOBS.values()))
         elif p == "/cache/status":
             self._send(watch_export.cache_status())
+        elif p in ("/min/data", "/min/watch"):
+            self._send(watch_export_30f.load_payload())
+        elif p == "/min/status":
+            self._send(watch_export_30f.min_cache_status())
         elif p == "/market/indices":
             klt = (q.get("klt") or ["101"])[0]
             self._send(watch_export.market_indices(klt=klt))
@@ -186,6 +245,18 @@ class Handler(BaseHTTPRequestHandler):
             fast = (q.get("mode") or [""])[0] == "fast"
             _spawn(_run_cache_update, fast)
             self._send({"started": "cache", "mode": "fast" if fast else "full"})
+        elif p == "/min/run":
+            key = (q.get("key") or ["all"])[0]
+            if key == "all":
+                _spawn(_run_all_30f)
+            elif key in watch_export_30f.VARIANTS_30F:
+                _spawn(_run_variant_30f, key)
+            else:
+                return self._send({"error": "bad key"}, 400)
+            self._send({"started": key})
+        elif p == "/min/update":
+            _spawn(_run_min_update)
+            self._send({"started": "m30:cache"})
         elif p == "/auth/login":
             self._send({**_USER, "accessToken": _TOKEN})
         elif p == "/auth/refresh":
