@@ -358,7 +358,9 @@ def cache_status(sample=400):
         except Exception:
             dist["读取失败"] += 1
     dates = [k for k in dist if k[:2] == "20"]
-    latest = max(dates, default="")
+    # "最新交易日"取占比最多的日期(众数), 而非 max —— 抗个别超前/滞后的脏数据
+    # (盘前快照可能给个别票写出次日 bar, 用 max 会把覆盖率误算成 0)
+    latest = max(dates, key=lambda d: dist[d], default="")
     latest_n = dist.get(latest, 0)
     cov = round(latest_n * 100 / len(samp)) if samp else 0
     # 非最新日全部折叠成一个"其它"桶(多为停牌/退市), 不再列零散旧日期

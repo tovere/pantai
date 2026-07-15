@@ -244,9 +244,9 @@ onUnmounted(() => timer && clearTimeout(timer));
           </el-button>
         </div>
         <div class="mode-card">
-          <div class="mode-title">🔄 全量重拉<span class="src">东财</span></div>
+          <div class="mode-title">🔄 全量重拉<span class="src">腾讯</span></div>
           <div class="mode-desc">
-            每只从 2024 至今<b>整段重下</b>，前复权最干净（除权除息后用它）。走东财、请求重、约 1 分钟，<b>别频繁点</b>；被限流会秒退保留旧数据。
+            每只从 2025 至今<b>整段重下</b>（腾讯前复权），约 1 分钟。用于重建历史/补新标的；<b>日常保鲜用左边快速刷新即可</b>。
           </div>
           <el-button
             :loading="running && job?.mode === 'full'"
@@ -261,7 +261,7 @@ onUnmounted(() => timer && clearTimeout(timer));
       <div v-if="job" class="prog-wrap">
         <template v-if="running">
           <span class="dim mode-tag">{{
-            job.mode === 'fast' ? '快速刷新(腾讯)' : '全量重拉(东财)'
+            job.mode === 'fast' ? '快速刷新(腾讯)' : '全量重拉(腾讯)'
           }}</span>
           <el-progress :percentage="job.pct" :stroke-width="14" class="prog" />
           <span class="dim">{{ job.done }}/{{ job.total }} 只</span>

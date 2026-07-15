@@ -1,11 +1,12 @@
 <script lang="ts" setup>
-import type { EChartsOption } from 'echarts';
-
 import type { WatchBar } from '#/api/watch';
 
 import { onMounted, ref } from 'vue';
 
 import { EchartsUI, type EchartsUIType, useEcharts } from '@vben/plugins/echarts';
+
+// 从 renderEcharts 的参数反推 option 类型, 避免直接 import 'echarts'(web-ele 未直依赖)
+type EChartsOption = Parameters<ReturnType<typeof useEcharts>['renderEcharts']>[0];
 
 const props = defineProps<{
   bars: WatchBar[];
@@ -29,7 +30,7 @@ onMounted(() => {
   // ECharts 蜡烛图数据: [开, 收, 低, 高]
   const kdata = bars.map((b) => [b[1], b[2], b[4], b[3]]);
   const closes = bars.map((b) => b[2]);
-  const vols = bars.map((b, i) => ({
+  const vols = bars.map((b) => ({
     value: b[5],
     itemStyle: { color: b[2] >= b[1] ? '#ef4444' : '#22c55e' },
   }));
@@ -53,11 +54,28 @@ onMounted(() => {
   const option: EChartsOption = {
     animation: false,
     grid: [
-      { left: 48, right: 16, top: 12, height: '62%' },
-      { left: 48, right: 16, top: '76%', height: '16%' },
+      { left: 48, right: 16, top: 12, height: '58%' },
+      { left: 48, right: 16, top: '72%', height: '14%' },
     ],
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      confine: true, // 锁在图表框内, 避免靠右/靠上时被容器边界裁掉
+    },
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
+    // 缩放: 滚轮/拖拽(inside) + 底部滑块(slider); K线与成交量 x 轴联动
+    dataZoom: [
+      { type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 },
+      {
+        type: 'slider',
+        xAxisIndex: [0, 1],
+        bottom: 6,
+        height: 16,
+        start: 0,
+        end: 100,
+        brushSelect: false,
+      },
+    ],
     xAxis: [
       {
         type: 'category',
@@ -140,5 +158,5 @@ onMounted(() => {
 </script>
 
 <template>
-  <EchartsUI ref="chartRef" height="340px" />
+  <EchartsUI ref="chartRef" height="370px" />
 </template>

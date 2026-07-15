@@ -17,7 +17,7 @@ ETF_UNIVERSE_PATH = CACHE_DIR / "etf_universe.json"
 DAILY_DIR = CACHE_DIR / "daily"
 MIN_DIR = CACHE_DIR / "minute"
 MIN_KLTS = (5, 30)  # 缓存的分钟级别
-DAILY_BEG = os.environ.get("MA_DAILY_BEG", "20240101")  # 日线起点(默认2024, 可env覆盖)
+DAILY_BEG = os.environ.get("MA_DAILY_BEG", "20250101")  # 日线起点(默认2025, 可env覆盖; 包更小、少限流)
 BYPASS_CACHE = os.environ.get("BYPASS_CACHE", "0") == "1"
 # 默认纯东财; 新浪源(量=股/额=估算/复权存疑)只在显式开启时作应急整段替换, 不掺入拼接
 ALLOW_SINA = os.environ.get("ALLOW_SINA", "0") == "1"
@@ -64,135 +64,98 @@ def _read_json(path):
         return None
 
 
-def universe(force=False):
-    today = date.today().isoformat()
-    cached = None if (force or BYPASS_CACHE) else _read_json(UNIVERSE_PATH)
-    if cached and cached.get("date") == today and cached.get("items"):
-        return [tuple(x) for x in cached["items"]]
-
-    out, pn = [], 1
-    while True:
-        url = (
-            f"https://push2delay.eastmoney.com/api/qt/clist/get?pn={pn}&pz=100&po=1&np=1"
-            "&fltt=2&invt=2&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
-            "&fields=f12,f14"
-        )
-        data = _get_json(url).get("data")
-        if not data or not data.get("diff"):
-            break
-        for item in data["diff"]:
-            code, name = item["f12"], item["f14"]
-            if "ST" in name or "退" in name or "PT" in name:
-                continue
-            if code.startswith("688") or code.startswith("3"):
-                continue
-            if code.startswith("6"):
-                out.append((code, name, f"1.{code}"))
-            elif code.startswith("0"):
-                out.append((code, name, f"0.{code}"))
-        if pn * 100 >= data.get("total", 0):
-            break
-        pn += 1
-    if out:
-        _atomic_write_json(UNIVERSE_PATH, {"date": today, "items": out})
-        return out
-    # 网络失败/空 → 回退到旧缓存(避免日期滚动+网络抖动清空股票池)
-    if cached and cached.get("items"):
-        return [tuple(x) for x in cached["items"]]
-    return out
+def _keep_stock(code, name, symbol):
+    """主板个股过滤: 剔 ST/退/PT、剔科创(688)/创业板(3), 留沪6->1. 深0->0.。"""
+    if not code or "ST" in name or "退" in name or "PT" in name:
+        return None
+    if code.startswith("688") or code.startswith("3"):
+        return None
+    if code.startswith("6"):
+        return (code, name, f"1.{code}")
+    if code.startswith("0"):
+        return (code, name, f"0.{code}")
+    return None
 
 
-def _fetch_etf_list_em():
-    """东财 ETF 板块 b:MK0021 翻页。返回 (items, complete)。complete=翻到 total。
-    易限流、翻页可能中途断; 断了 complete=False, 交由上层丢弃残缺结果。"""
-    out, pn, total, complete = [], 1, 0, False
-    while True:
-        url = (
-            f"https://push2.eastmoney.com/api/qt/clist/get?pn={pn}&pz=100&po=1&np=1"
-            "&fltt=2&invt=2&fid=f6&fs=b:MK0021&fields=f12,f14"
-        )
-        data = _get_json(url).get("data")
-        if not data or not data.get("diff"):
-            break
-        total = data.get("total", 0) or total
-        for item in data["diff"]:
-            code, name = item["f12"], item["f14"]
-            if code.startswith("5"):
-                out.append((code, name, f"1.{code}"))
-            elif code.startswith("1"):
-                out.append((code, name, f"0.{code}"))
-        if total and pn * 100 >= total:
-            complete = True
-            break
-        pn += 1
-    return out, complete
+def _keep_etf(code, name, symbol):
+    """ETF: 按 symbol 前缀映射 secid(sh->1. sz->0.)。"""
+    if not code:
+        return None
+    if symbol.startswith("sh"):
+        return (code, name, f"1.{code}")
+    if symbol.startswith("sz"):
+        return (code, name, f"0.{code}")
+    return None
 
 
-def _fetch_etf_list_sina():
-    """新浪 ETF 列表(备用源, 东财限流时用; 覆盖比东财板块更全)。返回 (items, complete)。
-    symbol 形如 sh511360/sz159915 -> secid 1.xxx/0.xxx。"""
+def _fetch_list_sina(node, keep):
+    """新浪列表分页(每页固定100)。node: hs_a(全A)/etf_hq_fund(ETF)。
+    keep(code,name,symbol)->secid元组|None 做过滤映射。并发翻页。
+    返回 (items, complete); complete=每一页都成功返回(任一页空=限流残缺)。"""
+    from concurrent.futures import ThreadPoolExecutor
+
     base = ("https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
             "Market_Center.")
-    cnt = _get(base + "getHQNodeStockCount?node=etf_hq_fund")
+    cnt = _get(base + f"getHQNodeStockCount?node={node}")
     try:
         total = int(cnt.strip().strip('"'))
     except (ValueError, AttributeError):
         total = 0
     if total <= 0:
         return [], False
-    out, num = [], 100
-    for pg in range(1, (total + num - 1) // num + 1):
-        raw = _get(base + f"getHQNodeData?page={pg}&num={num}&sort=amount&asc=0"
-                          "&node=etf_hq_fund&symbol=&_s_r_a=page")
+    pages = (total + 99) // 100
+
+    def fetch(pg):
+        raw = _get(base + f"getHQNodeData?page={pg}&num=100&sort=amount&asc=0"
+                          f"&node={node}&symbol=&_s_r_a=page")
         try:
-            arr = json.loads(raw)
+            return json.loads(raw) or []
         except (json.JSONDecodeError, TypeError):
-            arr = None
+            return []
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        results = list(ex.map(fetch, range(1, pages + 1)))
+    out, got = [], 0
+    for arr in results:
         if not arr:
-            break
+            continue
+        got += 1
         for it in arr:
-            sym, code, name = it.get("symbol", ""), it.get("code", ""), it.get("name", "")
-            if not code:
-                continue
-            if sym.startswith("sh"):
-                out.append((code, name, f"1.{code}"))
-            elif sym.startswith("sz"):
-                out.append((code, name, f"0.{code}"))
-    return out, (len(out) >= total * 0.9)
+            sec = keep(it.get("code", ""), it.get("name", ""), it.get("symbol", ""))
+            if sec:
+                out.append(sec)
+    return out, (got >= pages)
 
 
-def etf_universe(force=False):
-    """场内 ETF 列表。缓存到 etf_universe.json。secid: 5/56/58->沪(1.); 15/16->深(0.)。
-
-    东财优先, 限流/残缺则退新浪。只有'完整拉取、且不比旧缓存短'才允许覆盖落盘;
-    残缺结果一律丢弃并回退到上一份完整列表 —— 否则会把上千只的 ETF 池截断成一两百只,
-    导致筛选秒退、命中恒 0(快速刷新内部会调用本函数, 会连锁触发此重取)。"""
-    disk = _read_json(ETF_UNIVERSE_PATH)
+def _cached_list(path, node, keep, force):
+    """列表缓存通用逻辑: 今天+完整则直接用; 否则新浪重取, 只有'完整拉取'才覆盖落盘,
+    残缺一律丢弃并回退上一份完整列表(防限流把池子截断)。"""
+    disk = _read_json(path)
     prev = [tuple(x) for x in disk["items"]] if (disk and disk.get("items")) else []
     today = date.today().isoformat()
-    # 今天的缓存且上次已完整拉取 -> 直接用, 不再打网络
     if not (force or BYPASS_CACHE) and disk and disk.get("date") == today \
             and disk.get("complete") and prev:
         return prev
 
-    out, complete = _fetch_etf_list_em()
-    if not complete:  # 东财限流/残缺 -> 退新浪(更全更稳)
-        s_out, s_complete = _fetch_etf_list_sina()
-        if len(s_out) > len(out):
-            out, complete = s_out, s_complete
-
-    # 只有完整且不短于旧缓存才覆盖; 否则保留上一份完整列表, 绝不用残缺列表截断池子
-    if out and complete and len(out) >= len(prev):
-        _atomic_write_json(ETF_UNIVERSE_PATH,
-                           {"date": today, "complete": True, "items": out})
+    out, complete = _fetch_list_sina(node, keep)
+    if out and complete:
+        _atomic_write_json(path, {"date": today, "complete": True, "items": out})
         return out
     if prev:
-        return prev
-    # 从未有过缓存: 只能先用这次拿到的(可能不完整), 不标 complete, 下次继续补全
+        return prev  # 残缺 -> 保留上一份完整列表, 绝不截断
     if out:
-        _atomic_write_json(ETF_UNIVERSE_PATH,
-                           {"date": today, "complete": complete, "items": out})
+        _atomic_write_json(path, {"date": today, "complete": complete, "items": out})
     return out
+
+
+def universe(force=False):
+    """主板个股列表(新浪 hs_a 全A过滤)。缓存 universe.json。"""
+    return _cached_list(UNIVERSE_PATH, "hs_a", _keep_stock, force)
+
+
+def etf_universe(force=False):
+    """场内 ETF 列表(新浪 etf_hq_fund)。缓存 etf_universe.json。"""
+    return _cached_list(ETF_UNIVERSE_PATH, "etf_hq_fund", _keep_etf, force)
 
 
 def _daily_path(secid):
@@ -200,18 +163,32 @@ def _daily_path(secid):
 
 
 def _fetch_daily(secid, beg=None, allow_sina=True):
+    """腾讯前复权日线(web.ifzq.gtimg.cn/fqkline)。返回 klines: 每根
+    'date,open,close,high,low,volume,amount'(字段序同东财 f51..f57)。
+    腾讯只给 OHLCV, 成交额用 收盘×量×100 估算 —— 各策略只用今日那根的额(MIN_AMOUNT),
+    而今日那根走腾讯快照有真实额, 历史额仅供展示, 估算足够。东财已弃用(限流严重),
+    仅在显式开启时用新浪兜底。"""
     beg = beg or DAILY_BEG
+    b = f"{beg[:4]}-{beg[4:6]}-{beg[6:8]}" if len(beg) == 8 and beg.isdigit() else beg
+    sym = _tx_code(secid)
     url = (
-        "https://push2his.eastmoney.com/api/qt/stock/kline/get"
-        f"?secid={secid}&fields1=f1,f2,f3,f4,f5,f6"
-        "&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=1"
-        f"&beg={beg}&end=20500101"
+        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+        f"?param={sym},day,{b},2050-01-01,640,qfq"
     )
-    data = _get_json(url, tries=3, timeout=8).get("data")
-    if not data or not data.get("klines"):
-        # 新浪应急源默认关闭(ALLOW_SINA); 且拼接场景(allow_sina=False)永不走新浪, 避免混源
-        return _fetch_sina_daily(secid) if (allow_sina and ALLOW_SINA) else None
-    return data["klines"]
+    node = _get_json(url, tries=3, timeout=8).get("data", {}).get(sym, {})
+    rows = node.get("qfqday") or node.get("day") or []
+    klines = []
+    for r in rows:
+        try:
+            d, o, c, h, l, v = r[0], r[1], r[2], r[3], r[4], float(r[5])
+        except (IndexError, ValueError):
+            continue
+        amount = float(c) * v * 100.0  # 量(手)->股 ×100; 额≈收盘价×股数(元)
+        klines.append(f"{d},{o},{c},{h},{l},{v:.0f},{amount:.3f}")
+    if klines:
+        return klines
+    # 腾讯空 -> 新浪兜底(默认关闭; 拼接场景 allow_sina=False 不走, 避免混源)
+    return _fetch_sina_daily(secid) if (allow_sina and ALLOW_SINA) else None
 
 
 def _fetch_sina_daily(secid, datalen=700):
@@ -356,7 +333,7 @@ def warmup(max_workers=10):
     # 探测: 东财空且新浪未开 -> 放弃, 不做全市场无谓请求, 旧数据保留
     if _fetch_daily("0.000001", allow_sina=True) is None:
         print("  cached 0/0", flush=True)
-        print("EM_BLOCKED 东财限流中, 全量已跳过, 旧数据保留(应急可开新浪: ALLOW_SINA=1)", flush=True)
+        print("EM_BLOCKED 腾讯行情源无响应, 全量已跳过, 旧数据保留(应急可开新浪: ALLOW_SINA=1)", flush=True)
         return
     items = universe() + etf_universe()  # ETF 也要刷, 否则其日线停在旧日期 -> 筛选 D[i]!=TODAY 全挡 -> ETF 恒空
     done = ok = 0
@@ -534,7 +511,7 @@ def warmup_recent(max_workers=10, days=20, min_age_sec=120):
     # 先探测东财是否被限流(参考票小包): 空=限流, 立即放弃, 不做无谓的全市场请求, 旧缓存保留
     if _fetch_daily("0.000001", beg=beg, allow_sina=False) is None:
         print("  cached 0/0", flush=True)
-        print("EM_BLOCKED 东财限流中, 已跳过本次快速刷新, 旧数据保留", flush=True)
+        print("EM_BLOCKED 腾讯行情源无响应, 已跳过本次快速刷新, 旧数据保留", flush=True)
         return
     items = universe() + etf_universe()  # ETF 也要刷, 与 warmup/snapshot 保持一致, 否则 ETF 日线滞后 -> 恒空
     now = time.time()
