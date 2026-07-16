@@ -25,6 +25,8 @@ KLT = 30
 
 # key -> (脚本, 标题, 额外env)
 VARIANTS_30F = {
+    "resonance_stock": ("screen_resonance_30f.py", "★共振·个股·日线三买×30f", {}),
+    "resonance_etf":   ("screen_resonance_30f.py", "★共振·ETF·日线三买×30f", {"ETF_ONLY": "1"}),
     "s5_stock_strict": ("screen_chan_wyckoff_3buy_30f.py", "策略五·个股·严格", {"STRICT_BUY": "1"}),
     "s5_stock_loose":  ("screen_chan_wyckoff_3buy_30f.py", "策略五·个股·宽松", {"STRICT_BUY": "0"}),
     "s5_etf_strict":   ("screen_chan_wyckoff_3buy_30f.py", "策略五·ETF·严格", {"ETF_ONLY": "1", "STRICT_BUY": "1"}),
