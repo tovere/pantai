@@ -232,7 +232,7 @@ onUnmounted(() => timer && clearTimeout(timer));
         <div class="mode-card">
           <div class="mode-title">⚡ 快速刷新<span class="reco">推荐日常用</span></div>
           <div class="mode-desc">
-            走<b>腾讯批量实时</b>(全市场约15次请求、秒级)，只覆盖每只<b>今天那根bar</b>——盘中反复点能刷最新价，<b>不受东财限流</b>。量单位逐只自动校准。历史与前复权不动。
+            走<b>腾讯批量实时</b>(全市场约15次请求、秒级)，只覆盖每只<b>今天那根bar</b>——盘中反复点能刷最新价。量单位逐只自动校准。历史与前复权不动。<b>日常保鲜用它</b>。
           </div>
           <el-button
             type="primary"

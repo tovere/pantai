@@ -177,6 +177,7 @@ onUnmounted(() => timer && clearTimeout(timer));
             >
               重跑本策略
             </el-button>
+            <span v-if="sec.btNote" class="bt-note">📊 回测 {{ sec.btNote }}</span>
             <span v-if="jobOf(sec.key)" class="job-meta">
               <template v-if="jobOf(sec.key)!.status === 'running'">
                 <el-progress
@@ -293,6 +294,13 @@ onUnmounted(() => timer && clearTimeout(timer));
   align-items: center;
   gap: 12px;
   margin-bottom: 10px;
+}
+.bt-note {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 .job-meta {
   display: flex;

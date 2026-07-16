@@ -60,6 +60,7 @@ export interface WatchSection {
   count: number;
   hits: WatchHit[];
   error?: null | string;
+  btNote?: string;
 }
 
 export interface WatchData {

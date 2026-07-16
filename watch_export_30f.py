@@ -38,6 +38,20 @@ VARIANTS_30F = {
 }
 VKEYS_30F = list(VARIANTS_30F.keys())
 
+# 回测胜率注解(30f口径, 均为40天小样本, 仅方向性参考)。
+BACKTEST_NOTE = {
+    "resonance_stock": "40天·14笔 50%胜 −0.5% ·方向性",
+    "resonance_etf":   "40天·样本极少 ·观察",
+    "s5_stock_strict": "40天·343笔 38%胜 −0.9%",
+    "s5_stock_loose":  "40天·1064笔 40%胜 −0.7%",
+    "s5_etf_strict":   "40天·167笔 31%胜 −2.1%",
+    "s5_etf_loose":    "40天·小样本 ·参考",
+    "s6_stock":        "40天·92笔 45%胜 +0.2%",
+    "s6_etf":          "40天·样本极少 ·观察",
+    "s7_stock":        "40天·37笔 35%胜 −1.0%",
+    "s7_etf":          "40天·样本极少 ·观察",
+}
+
 
 def _bars_for_30f(secid, n=80):
     rows = cache_data.min_kline(secid, KLT)
@@ -80,6 +94,7 @@ def enrich_section(key, raw):
         "key": key, "strategy": strategy, "title": title,
         "is_etf": is_etf, "count": len(hits), "hits": hits,
         "error": raw.get("error"), "latest": latest,
+        "btNote": BACKTEST_NOTE.get(key, ""),
         "updatedAt": W.now_bj().strftime("%Y-%m-%d %H:%M"),
     }
 
@@ -127,13 +142,18 @@ def empty_payload():
 
 
 def load_payload():
+    payload = None
     if os.path.exists(OUT_PATH_30F):
         try:
             with open(OUT_PATH_30F, encoding="utf-8") as f:
-                return json.load(f)
+                payload = json.load(f)
         except (OSError, json.JSONDecodeError):
-            pass
-    return empty_payload()
+            payload = None
+    if payload is None:
+        payload = empty_payload()
+    for s in payload.get("sections", []):
+        s["btNote"] = BACKTEST_NOTE.get(s["key"], "")
+    return payload
 
 
 def merge_section(section):

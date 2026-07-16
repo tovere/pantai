@@ -42,6 +42,18 @@ VARIANTS = {
 }
 VKEYS = list(VARIANTS.keys())
 
+# 回测胜率注解(日线口径, 数据见 README)。展示在盯盘台每个策略tab下。
+BACKTEST_NOTE = {
+    "s5_stock_loose":  "日线 40%胜 · +0.75%/笔",
+    "s5_stock_strict": "日线 41%胜 · +1.11%/笔",
+    "s5_etf_loose":    "日线·移动止损 63%胜 · +2.81%/笔",
+    "s5_etf_strict":   "日线·移动止损 76%胜 · +2.90%/笔(狙击)",
+    "s6_stock":        "日线 49%胜 · +1.10%/笔(动量版)",
+    "s6_etf":          "日线 47%胜 · +1.23%/笔",
+    "s7_stock":        "日线 50%胜 · +3.10%/笔(样本薄)",
+    "s8_stock":        "日线 见 backtest_nzi_reversal.py",
+}
+
 
 def _secid(code, is_etf):
     if is_etf:
@@ -127,6 +139,7 @@ def enrich_section(key, raw):
         "key": key, "strategy": strategy, "title": title,
         "is_etf": is_etf, "count": len(hits), "hits": hits,
         "error": raw.get("error"), "latest": latest,
+        "btNote": BACKTEST_NOTE.get(key, ""),
         "updatedAt": now_bj().strftime("%Y-%m-%d %H:%M"),
     }
 
@@ -180,13 +193,18 @@ def empty_payload():
 
 
 def load_payload():
+    payload = None
     if os.path.exists(OUT_PATH):
         try:
             with open(OUT_PATH, encoding="utf-8") as f:
-                return json.load(f)
+                payload = json.load(f)
         except (OSError, json.JSONDecodeError):
-            pass
-    return empty_payload()
+            payload = None
+    if payload is None:
+        payload = empty_payload()
+    for s in payload.get("sections", []):  # 老缓存也补上回测胜率注解
+        s["btNote"] = BACKTEST_NOTE.get(s["key"], "")
+    return payload
 
 
 def _resummarize(payload):

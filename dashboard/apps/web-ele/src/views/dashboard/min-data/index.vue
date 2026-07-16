@@ -120,7 +120,7 @@ onUnmounted(() => timer && clearTimeout(timer));
         <div class="mode-card">
           <div class="mode-title">🔄 刷新30分<span class="src">全市场</span></div>
           <div class="mode-desc">
-            全市场重拉<b>30分钟K线</b>缓存，供30f策略变体评级使用。刷新完到「30F盯盘」点「重跑本策略/全部重跑」用最新数据。
+            全市场每只拉<b>最近约40天30分K线</b>并累积(约1分钟)。30分只有这一种刷新——既非日线快照、也非重下历史,单次接口本就只给约320根。刷完到「30F盯盘」点「重跑本策略/全部重跑」用最新数据评级。
           </div>
           <el-button
             type="primary"
