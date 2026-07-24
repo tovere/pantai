@@ -39,6 +39,7 @@ VARIANTS = {
     "s6_etf":          ("screen_squeeze_launch.py",    "策略六·ETF·压缩蓄势", {"ETF_ONLY": "1"}),
     "s7_stock":        ("screen_spring_2buy.py",       "策略七·个股·Spring二买背驰", {}),
     "s8_stock":        ("screen_nzi_reversal.py",      "策略八·个股·N字反包", {}),
+    "s9_stock":        ("screen_strategy9_distilled.py", "策略九·防守版(压缩+Spring)", {}),
 }
 VKEYS = list(VARIANTS.keys())
 
@@ -53,6 +54,7 @@ BACKTEST_NOTE = {
     "s6_etf":          "日线·总50%·+1.23%(ETF调参)",
     "s7_stock":        "日线·总49%·启动12%·启动后60%(样本薄)",
     "s8_stock":        "日线·见 backtest_nzi_reversal.py",
+    "s9_stock":        "日线·防守版·总51.5%·+1.43%/笔·10仓回撤10.7%",
 }
 
 
@@ -97,6 +99,20 @@ def _levels(strategy, hit):
     if strategy == "spring_2buy":
         return {"区间下沿": hit.get("range_low"), "Spring低": hit.get("spring_low"),
                 "止损": hit.get("stop")}
+    if strategy == "strategy9_distilled":
+        if hit.get("kind") == "spring_2buy":
+            return {"区间下沿": hit.get("range_low"), "Spring低": hit.get("spring_low"),
+                    "止损": hit.get("stop")}
+        if hit.get("kind") == "coil_launch":
+            coil = hit.get("coil", "")
+            lo = hi = None
+            if "-" in coil:
+                try:
+                    lo, hi = (float(x) for x in coil.split("-"))
+                except ValueError:
+                    lo = hi = None
+            return {"蓄势上沿": hi, "蓄势下沿": lo, "止损": hit.get("stop")}
+        return {"止损": hit.get("stop")}
     if strategy == "nzi_reversal":
         return {"前高": hit.get("peak"), "回踩低": hit.get("pull_low"),
                 "止损": hit.get("stop")}

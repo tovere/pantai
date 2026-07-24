@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { WatchHit, WatchSection } from '#/api/watch';
+import type { WatchFlag, WatchHit, WatchSection } from '#/api/watch';
 
 import { computed } from 'vue';
 
@@ -7,12 +7,15 @@ import KlineChart from './KlineChart.vue';
 
 const props = defineProps<{ section: WatchSection }>();
 
+type TagType = 'danger' | 'info' | 'primary' | 'success' | 'warning';
+
 const isS5 = computed(() => props.section.strategy === 'chan_wyckoff_3buy');
 const isS6 = computed(() => props.section.strategy === 'squeeze_launch');
 const isS7 = computed(() => props.section.strategy === 'spring_2buy');
 const isS8 = computed(() => props.section.strategy === 'nzi_reversal');
+const isS9 = computed(() => props.section.strategy === 'strategy9_distilled');
 
-const GRADE_TYPE: Record<string, string> = {
+const GRADE_TYPE: Record<WatchHit['grade'], TagType> = {
   A: 'success',
   B: 'primary',
   C: 'info',
@@ -24,7 +27,7 @@ const GRADE_LABEL: Record<string, string> = {
   C: 'C 偏弱',
   D: 'D 剔除',
 };
-const FLAG_TYPE: Record<string, string> = {
+const FLAG_TYPE: Record<WatchFlag['type'], TagType> = {
   good: 'success',
   warn: 'warning',
   bad: 'danger',
@@ -39,6 +42,12 @@ function fmt(v: number | undefined, digits = 2) {
 function sign(v: number | undefined, digits = 1) {
   if (v == null) return '-';
   return `${v > 0 ? '+' : ''}${v.toFixed(digits)}`;
+}
+function gradeType(grade: WatchHit['grade']): TagType {
+  return GRADE_TYPE[grade];
+}
+function flagType(type: WatchFlag['type']): TagType {
+  return FLAG_TYPE[type];
 }
 </script>
 
@@ -59,7 +68,7 @@ function sign(v: number | undefined, digits = 1) {
       <template #default="{ row }">
         <div class="expand-body">
           <div class="expand-note">
-            <el-tag :type="GRADE_TYPE[row.grade]" effect="dark" size="small">
+            <el-tag :type="gradeType(row.grade)" effect="dark" size="small">
               {{ GRADE_LABEL[row.grade] }}
             </el-tag>
             <span>{{ row.gradeNote }}</span>
@@ -73,7 +82,7 @@ function sign(v: number | undefined, digits = 1) {
     <el-table-column label="名称" width="92" prop="name" show-overflow-tooltip />
     <el-table-column label="评级" width="104">
       <template #default="{ row }">
-        <el-tag :type="GRADE_TYPE[row.grade]" effect="dark" size="small">
+        <el-tag :type="gradeType(row.grade)" effect="dark" size="small">
           {{ GRADE_LABEL[row.grade] }}
         </el-tag>
       </template>
@@ -170,6 +179,30 @@ function sign(v: number | undefined, digits = 1) {
       </el-table-column>
     </template>
 
+    <!-- 策略九 列 -->
+    <template v-else-if="isS9">
+      <el-table-column label="入口" width="92" align="center">
+        <template #default="{ row }">{{ row.setup || row.kind }}</template>
+      </el-table-column>
+      <el-table-column label="压缩/背驰" width="92" align="right">
+        <template #default="{ row }">
+          <span v-if="row.kind === 'coil_launch'">{{ row.score }}分</span>
+          <span v-else-if="row.kind === 'spring_2buy'">{{ fmt(row.div_pct) }}%</span>
+          <span v-else>{{ row.stage ? `#${row.stage}` : '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="位置" width="96" align="right">
+        <template #default="{ row }">
+          <span v-if="row.kind === 'coil_launch'">距MA60 {{ sign(row.bias60) }}%</span>
+          <span v-else-if="row.kind === 'spring_2buy'">离S {{ sign(row.up_from_spring) }}%</span>
+          <span v-else>距上沿 {{ sign(row.dist) }}%</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="止损" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.stop) }}</template>
+      </el-table-column>
+    </template>
+
     <el-table-column label="额(亿)" width="72" align="right">
       <template #default="{ row }">{{ fmt(row.amt, 1) }}</template>
     </el-table-column>
@@ -178,7 +211,7 @@ function sign(v: number | undefined, digits = 1) {
         <el-tag
           v-for="f in row.flags"
           :key="f.text"
-          :type="FLAG_TYPE[f.type]"
+          :type="flagType(f.type)"
           size="small"
           class="flag-tag"
           :effect="f.type === 'bad' ? 'dark' : 'plain'"

@@ -28,6 +28,8 @@ ma_backtest/                    # 项目根
 | 五 · 周线向上 + 日线缠论/威科夫三买 | [`screen_chan_wyckoff_3buy.py`](screen_chan_wyckoff_3buy.py) / [`backtest_chan_wyckoff_3buy.py`](backtest_chan_wyckoff_3buy.py) | 周线向上过滤；日线 TR/中枢后 SOS 放量离开；回踩中枢上沿形成 LPS/三买；**中枢序号过滤(严格版只买第一个中枢)**；确认顶分型卖，跌破三买低点/中枢上沿止损 | ✅ 严格入场更适合作为下单条件；宽松版适合作为候选池 |
 | 六 · C段加速前临界点(压缩蓄势) | [`screen_squeeze_launch.py`](screen_squeeze_launch.py) / [`backtest_squeeze_launch.py`](backtest_squeeze_launch.py) | 埋伏**强势票**(前涨≥25%)缩量歇脚的压缩点：均线粘合+振幅收窄+缩量地量+贴前高横住；未启动时间止损、启动后移动止损 | ✅ 动量版 +1.10%/笔(接近策略2/3)；启动票胜率~88%吃 +8~12%；关键发现：加速偏爱强势票，非低位票 |
 | 七 · 威科夫Spring+缠论二买(底背驰) | [`screen_spring_2buy.py`](screen_spring_2buy.py) / [`backtest_spring_2buy.py`](backtest_spring_2buy.py) | 上升趋势内(周MA10上行)假跌破短支撑收回(Spring)+**强底背驰**(MACD-DIF背离幅度≥门槛)+回踩不破更高低(二买)+站回MA10；止损贴Spring下方，移动止损、快砍空等 | ✅ 调优后 **+3.10%/笔、50%胜、失败单归零**(个股)。⚠️ 一年仅42信号、靠肥右尾(启动单+26%)，样本薄、待跨期验证 |
+| 八 · 放量突破年线后缩量回踩 | [`backtest_yearline_pullback.py`](backtest_yearline_pullback.py) | MA250 放量突破后，首次缩量回踩年线且收盘守住买入；年线失守/硬止损/启动后移动止损卖出 | ❌ 本地一年 355 笔，胜率 16.6%、均值 -1.28%、中位 -3.07%；形态常见但假突破太多，不能单独机械跑 |
+| 九 · 八策蒸馏结构版 | [`backtest_strategy9_distilled.py`](backtest_strategy9_distilled.py) | 淘汰策略1/4/8独立入场；默认只留三买、压缩蓄势、Spring二买，统一硬止损/移动止损与组合池；MA5突破、MA20回踩可用 env 开关扩展 | ✅ 结构精选版 1788 笔，胜率42.7%、均值+0.82%；8仓 +39.6%/回撤24.5%。广撒版噪音大，默认不用 |
 | **合并 · 突破+回踩并行** | [`COMBINED.md`](COMBINED.md) | 策略2+3共用仓位池(8仓最优)+上班族执行模型 | ✅ **风险调整最优(+43.6%/回撤13.4%)**；⚠双确认反更差 |
 
 ## 策略五：周线向上 + 日线缠论/威科夫三买

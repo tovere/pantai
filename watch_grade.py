@@ -288,6 +288,18 @@ def grade(strategy, hit, bars):
         return grade_squeeze(hit, bars)
     if strategy == "spring_2buy":
         return grade_spring(hit, bars)
+    if strategy == "strategy9_distilled":
+        kind = hit.get("kind")
+        if kind == "coil_launch":
+            g = grade_squeeze(hit, bars)
+        elif kind == "spring_2buy":
+            g = grade_spring(hit, bars)
+        elif kind == "chan_3buy":
+            g = grade_three_buy(hit, bars)
+        else:
+            return {"grade": "C", "score": 0, "flags": [], "note": ""}
+        g["note"] = f"{hit.get('setup', '策略9')}: {g['note']}"
+        return g
     if strategy == "nzi_reversal":
         return grade_nzi(hit, bars)
     return {"grade": "C", "score": 0, "flags": [], "note": ""}

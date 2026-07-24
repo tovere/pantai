@@ -50,6 +50,10 @@ export interface WatchHit {
   pull_low?: number;
   shrink?: number;
   vexp?: number;
+  // 策略九(蒸馏版)字段
+  kind?: 'chan_3buy' | 'coil_launch' | 'spring_2buy' | string;
+  setup?: string;
+  s9_priority?: number;
 }
 
 export interface WatchSection {

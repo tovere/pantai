@@ -173,8 +173,10 @@ def _fetch_daily(secid, beg=None, allow_sina=True):
     sym = _tx_code(secid)
     url = (
         # 用裸域 ifzq.gtimg.cn: web.ifzq.gtimg.cn 有 WAF, 高并发全量会被 501 拦
+        # ⚠️ end 留空: 给远期 end(如 2050-01-01)时腾讯 qfq 只返回到已结算的 T-1,
+        #    今天那根被漏掉 -> 指数图恒慢一天。留空则含当日, 见 daily_kline 注释。
         "https://ifzq.gtimg.cn/appstock/app/fqkline/get"
-        f"?param={sym},day,{b},2050-01-01,640,qfq"
+        f"?param={sym},day,{b},,640,qfq"
     )
     node = _get_json(url, tries=3, timeout=8).get("data", {}).get(sym, {})
     rows = node.get("qfqday") or node.get("day") or []
