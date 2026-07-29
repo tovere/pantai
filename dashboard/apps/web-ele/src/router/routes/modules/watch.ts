@@ -38,6 +38,15 @@ const routes: RouteRecordRaw[] = [
           title: '历史命中',
         },
       },
+      {
+        name: 'WatchReadme',
+        path: '/watch/readme',
+        component: () => import('#/views/dashboard/readme/index.vue'),
+        meta: {
+          icon: 'lucide:book-open-text',
+          title: '策略说明',
+        },
+      },
     ],
   },
   {

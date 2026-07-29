@@ -27,9 +27,24 @@ const pending = new Set<string>();
 const cards = computed(() => {
   const s = data.value?.summary;
   return [
-    { label: '今日命中', value: s?.total ?? 0, hint: '全部策略去重前', color: '' },
-    { label: 'A 下单级别', value: s?.gradeA ?? 0, hint: '干净回踩+转强', color: 'a' },
-    { label: 'B 候选', value: s?.gradeB ?? 0, hint: '位置尚可待观察', color: 'b' },
+    {
+      label: '今日命中',
+      value: s?.total ?? 0,
+      hint: '全部策略去重前',
+      color: '',
+    },
+    {
+      label: 'A 下单级别',
+      value: s?.gradeA ?? 0,
+      hint: '干净回踩+转强',
+      color: 'a',
+    },
+    {
+      label: 'B 候选',
+      value: s?.gradeB ?? 0,
+      hint: '位置尚可待观察',
+      color: 'b',
+    },
   ];
 });
 
@@ -141,18 +156,20 @@ onUnmounted(() => timer && clearTimeout(timer));
 
     <!-- 策略 Tab -->
     <el-card v-if="data" shadow="never" class="tab-card">
-      <el-tabs v-model="activeTab">
+      <el-tabs v-model="activeTab" tab-position="left" class="side-tabs">
         <el-tab-pane
           v-for="sec in data.sections"
           :key="sec.key"
           :name="sec.key"
         >
           <template #label>
-            {{ sec.title }}
+            <span class="tab-title">{{ sec.title }}</span>
             <el-badge
               v-if="sec.count"
               :value="sec.count"
-              :type="sec.hits.some((h) => h.grade === 'A') ? 'success' : 'primary'"
+              :type="
+                sec.hits.some((h) => h.grade === 'A') ? 'success' : 'primary'
+              "
               class="tab-badge"
             />
             <el-icon
@@ -177,7 +194,12 @@ onUnmounted(() => timer && clearTimeout(timer));
             >
               重跑本策略
             </el-button>
-            <span v-if="sec.btNote" class="bt-note">📊 回测 {{ sec.btNote }}</span>
+            <span v-if="sec.btNote" class="bt-note"
+              >📊 回测 {{ sec.btNote }}</span
+            >
+            <span v-if="sec.gradeBtNote" class="grade-bt-note">
+              🎯 评级回测 {{ sec.gradeBtNote }}
+            </span>
             <span v-if="jobOf(sec.key)" class="job-meta">
               <template v-if="jobOf(sec.key)!.status === 'running'">
                 <el-progress
@@ -201,7 +223,9 @@ onUnmounted(() => timer && clearTimeout(timer));
                 >出错: {{ jobOf(sec.key)!.error }}</el-tag
               >
             </span>
-            <span v-if="sec.error" class="dim err">脚本错误: {{ sec.error }}</span>
+            <span v-if="sec.error" class="dim err"
+              >脚本错误: {{ sec.error }}</span
+            >
           </div>
 
           <HitTable :section="sec" />
@@ -210,7 +234,8 @@ onUnmounted(() => timer && clearTimeout(timer));
     </el-card>
 
     <p class="foot">
-      30分钟级别策略变体（s5/s6/s7 × 个股/ETF）。评级复用日线口径，K线为30分bar。仅供参考，不构成投资建议。
+      30分钟级别策略变体（s5/s6/s7 ×
+      个股/ETF）。评级复用日线口径，K线为30分bar。仅供参考，不构成投资建议。
     </p>
   </div>
 </template>
@@ -292,8 +317,17 @@ onUnmounted(() => timer && clearTimeout(timer));
 .strat-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 10px;
+}
+.grade-bt-note {
+  padding: 2px 8px;
+  border: 1px solid var(--el-color-success-light-7);
+  border-radius: 4px;
+  background: var(--el-color-success-light-9);
+  color: var(--el-text-color-regular);
+  font-size: 12px;
 }
 .bt-note {
   font-size: 12px;
@@ -326,3 +360,5 @@ onUnmounted(() => timer && clearTimeout(timer));
   background: var(--el-fill-color);
 }
 </style>
+
+<style src="../_shared/side-tabs.css"></style>

@@ -230,8 +230,8 @@ def exit_trade(rows, i, rec):
     return end, C[end], "timeout", worst
 
 
-def run_one(code, name, secid):
-    rows = cache_data.daily_kline(secid)
+def run_one(code, name, secid, rows=None):
+    rows = rows if rows is not None else cache_data.daily_kline(secid)
     if not rows or len(rows) < 110:
         return []
     ctx = {

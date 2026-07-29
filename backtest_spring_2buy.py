@@ -57,6 +57,8 @@ def signal_at(code, name, rows, i):
         "spring_low": sig["spring_low"],
         "div": sig["div"],
         "up_from_spring": sig["up_from_spring"],
+        "div_pct": sig["div"] / C[i] * 100,
+        "amt": A[i] / 1e8,
     }
 
 
@@ -88,8 +90,8 @@ def exit_trade(rows, i, rec):
     return end, C[end], "timeout", worst
 
 
-def run_one(code, name, secid):
-    rows = cache_data.daily_kline(secid)
+def run_one(code, name, secid, rows=None):
+    rows = rows if rows is not None else cache_data.daily_kline(secid)
     if not rows or len(rows) < 110:
         return []
     O = [float(r[1]) for r in rows]

@@ -1,0 +1,56 @@
+/* 侧边竖排 Tab —— 盯盘台的策略变体已有 11 个, 横排会溢出成滚动条要左右翻,
+   竖排一眼看全。给 <el-tabs tab-position="left" class="side-tabs"> 用。
+   本文件为**非 scoped** 全局样式, 三个盯盘页面共用, 以后新增页面直接挂 class 即可。 */
+
+.el-tabs.side-tabs {
+  min-height: 360px;
+}
+
+.el-tabs.side-tabs .el-tabs__header.is-left {
+  margin-right: 16px;
+}
+
+.el-tabs.side-tabs .el-tabs__nav-wrap.is-left {
+  margin-right: 0;
+}
+
+.el-tabs.side-tabs .el-tabs__item.is-left {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 208px;
+  height: auto;
+  min-height: 38px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal; /* 长标题换行, 不要省略号 */
+  word-break: break-word;
+  border-radius: 6px 0 0 6px;
+}
+
+.el-tabs.side-tabs .el-tabs__item.is-left:hover {
+  background: var(--el-fill-color-light);
+}
+
+.el-tabs.side-tabs .el-tabs__item.is-left.is-active {
+  font-weight: 600;
+  background: var(--el-color-primary-light-9);
+}
+
+/* 内容区不能被宽表格挤到把左侧导航压变形 */
+.el-tabs.side-tabs .el-tabs__content {
+  min-width: 0;
+}
+
+/* 标题占满剩余宽度, 徽标/loading 图标固定贴右 */
+.el-tabs.side-tabs .tab-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.el-tabs.side-tabs .tab-badge {
+  flex: none;
+  margin-left: 6px;
+}

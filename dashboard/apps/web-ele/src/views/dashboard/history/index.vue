@@ -78,7 +78,7 @@ onMounted(async () => {
           <span v-if="day" class="dim">（生成于 {{ day.generatedAt }}）</span>
         </template>
         <el-empty v-if="!day" description="选择左侧日期" />
-        <el-tabs v-else v-model="activeTab">
+        <el-tabs v-else v-model="activeTab" tab-position="left" class="side-tabs">
           <el-tab-pane
             v-for="sec in day.sections"
             :key="sec.key"
@@ -193,3 +193,5 @@ onMounted(async () => {
   font-weight: 600;
 }
 </style>
+
+<style src="../_shared/side-tabs.css"></style>

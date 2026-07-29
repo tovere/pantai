@@ -281,7 +281,121 @@ def grade_nzi(hit, bars):
     return {"grade": grade, "score": score, "flags": flags, "note": note}
 
 
+def grade_chan_final(hit, bars):
+    """策略十(严格笔中枢·缠论三买)评级。
+
+    权重全部有本地一年全市场回测依据(见 strategy_chan_final/README 4.2):
+      中枢序号  第1个 +1.03%/笔 vs 第2个 -0.08%  -> 首中枢 +2, #2 警告
+      止损距离  结构止损=ZG, 越近盈亏比越好
+      滞后 lag  回试低点后越早转强越干净(MAX_LAG=4)
+      次级别共振 708 区间套, 理论最值钱但**未进回测**(30分数据仅40个交易日), 只给 +1
+    """
+    flags, score = [], 0
+    stage = int(hit.get("stage", 1))
+    risk = _f(hit.get("risk"))          # 现价距结构止损%
+    lag = int(hit.get("lag", 0))
+    amt = _f(hit.get("amt"))
+    sub = hit.get("sub") or ""
+
+    is_etf = bool(hit.get("is_etf"))
+    if stage == 1:
+        score += 2
+        flags.append({"text": "首中枢", "type": "good"})
+    elif stage >= 2 and is_etf:
+        # ETF 上第2个中枢 -2.36%/23%胜、第3+样本薄, 明确亏钱 -> 直接剔除
+        flags.append({"text": f"#{stage}中枢·ETF该档回测-2.4%", "type": "bad"})
+        return {"grade": "D", "score": -99, "flags": flags,
+                "note": f"第{stage}个中枢, ETF上该档实测负期望(胜率仅23%), 剔除"}
+    elif stage == 2:
+        flags.append({"text": "#2中枢·回测该档转负", "type": "warn"})
+    elif stage >= 3:
+        score -= 1
+        flags.append({"text": f"#{stage}中枢·晚期(样本仅10笔)", "type": "warn"})
+
+    if sub:
+        score += 1
+        flags.append({"text": f"30分共振({sub})", "type": "good"})
+
+    if 0 < risk <= 4:
+        score += 1
+        flags.append({"text": f"止损近(-{risk:.1f}%)", "type": "good"})
+    elif risk > 8:
+        score -= 1
+        flags.append({"text": f"止损偏远(-{risk:.1f}%)", "type": "warn"})
+
+    if lag <= 1:
+        score += 1
+        flags.append({"text": "刚转强", "type": "good"})
+    elif lag >= 4:
+        score -= 1
+        flags.append({"text": f"回试后已{lag}天", "type": "warn"})
+
+    if amt and amt < 1.5:
+        score -= 1
+        flags.append({"text": f"量能偏小({amt:.1f}亿)", "type": "warn"})
+
+    if _rejection(bars):
+        score -= 2
+        flags.append({"text": "冲高回落", "type": "bad"})
+    if _volume_stall(bars, lag + 2):
+        score -= 2
+        flags.append({"text": "放量滞涨·上方派发", "type": "bad"})
+
+    g = _decide(score, flags)
+    market_ready = all(k in hit for k in (
+        "marketRet5", "marketRet20", "marketRet60",
+        "marketAbove20", "marketAbove60", "marketMa20Above60",
+    ))
+    has_bad = any(flag["type"] == "bad" for flag in flags)
+    joint_grade = False
+    if market_ready and not is_etf and g != "D" and not has_bad:
+        # Fixed at 2025-12-31 on 4,396 prior trades. The 2026 rolling OOS
+        # sample kept an A mean-return edge; these grades rank expected return,
+        # not the probability of a positive trade.
+        x = [
+            1.0, float(stage == 1), float(stage == 2),
+            float(0 < risk <= 4), float(risk > 8),
+            float(lag <= 1), float(lag >= 4), float(bool(amt and amt < 1.5)),
+            0.0, float(hit["marketRet5"]) * 10,
+            float(hit["marketRet20"]) * 10, float(hit["marketRet60"]) * 5,
+            float(bool(hit["marketAbove20"])),
+            float(bool(hit["marketAbove60"])),
+            float(bool(hit["marketMa20Above60"])),
+            float(float(hit["marketRet20"]) >= 0),
+        ]
+        weights = [
+            -0.01093438, 0.00013049, -0.00197477, 0.00592241,
+            0.00246035, 0.00349858, -0.00259557, 0.00013726,
+            0.00363853, -0.00747207, 0.00954102, 0.00277040,
+            0.00385980, -0.00135056, -0.00141536, 0.00192086,
+        ]
+        expected = sum(a * b for a, b in zip(weights, x))
+        g = "A" if expected >= 0.00166646 else "B" if expected >= -0.00444903 else "C"
+        joint_grade = True
+        score = round(expected * 10000)
+        market_text = (
+            "市场联合评分偏强" if g == "A" else
+            "市场联合评分中性" if g == "B" else "市场联合评分偏弱"
+        )
+        flags.append({"text": market_text, "type": "good" if g == "A" else "warn"})
+    if g == "A":
+        note = "首中枢+回试不破ZG+确认转强, 下单级别"
+    elif any(f["type"] == "bad" for f in flags):
+        note = "结构命中但今日盘口减分, 观察不追"
+    elif g == "B":
+        note = "三买候选, 结构成立但位置/确认一般"
+    elif joint_grade:
+        note = "结构成立，但当前结构与市场组合的历史期望偏低"
+    else:
+        note = "偏弱: 中枢序号靠后或止损偏远"
+    # 回测里 0-4 天持有 -1.51%、15-19 天 +7.70% —— 这是慢信号, 提醒别当日内做
+    return {"grade": g, "score": score, "flags": flags,
+            "note": note + "。⚠️三买是慢信号(回测持有<5天为负, 10天后才转正), 别当天进出"}
+
+
 def grade(strategy, hit, bars):
+    if strategy == "chan_final":
+        return grade_chan_final(hit, bars)
     if strategy == "chan_wyckoff_3buy":
         return grade_three_buy(hit, bars)
     if strategy == "squeeze_launch":

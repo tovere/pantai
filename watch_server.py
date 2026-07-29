@@ -236,7 +236,7 @@ class Handler(BaseHTTPRequestHandler):
             key = (q.get("key") or ["all"])[0]
             if key == "all":
                 _spawn(_run_all)
-            elif key in watch_export.VARIANTS:
+            elif key in watch_export.VKEYS:
                 _spawn(_run_variant, key)
             else:
                 return self._send({"error": "bad key"}, 400)

@@ -40,21 +40,64 @@ VARIANTS = {
     "s7_stock":        ("screen_spring_2buy.py",       "策略七·个股·Spring二买背驰", {}),
     "s8_stock":        ("screen_nzi_reversal.py",      "策略八·个股·N字反包", {}),
     "s9_stock":        ("screen_strategy9_distilled.py", "策略九·防守版(压缩+Spring)", {}),
+    # 策略十用回测选出的最优参数: 只做三买(一买负期望/二买弱)、周线MA口径向上、
+    # 开次级别30分共振(区间套708)。出场对应顶分型卖, 见 strategy_chan_final/README。
+    "s10_stock":       ("strategy_chan_final/screen.py", "策略十·个股·缠论三买(严格笔中枢)",
+                        {"ENABLE_TYPES": "3", "WEEKLY_MODE": "ma", "SUB_LEVEL": "1"}),
+    # ETF 版: 出场必须换成移动止损(实测 +1.42% vs 顶分型 +0.41%), 且只买第1个中枢
+    # (ETF 第2个中枢 -2.36%/23%胜, 由 watch_grade 直接判 D)。与策略五 ETF 结论一致。
+    "s10_etf":         ("strategy_chan_final/screen.py", "策略十·ETF·缠论三买(移动止损)",
+                        {"ETF_ONLY": "1", "ENABLE_TYPES": "3", "WEEKLY_MODE": "ma",
+                         "SUB_LEVEL": "1", "PULLBACK_GG": "1"}),
 }
-VKEYS = list(VARIANTS.keys())
+# 暂停展示/运行但保留配置与回测代码，移出集合即可恢复。
+DISABLED_VARIANTS = {"s6_stock", "s9_stock"}
+VKEYS = [key for key in VARIANTS if key not in DISABLED_VARIANTS]
 
 # 回测注解(日线口径, 数据见 README)。总胜率 / 启动几率 / 启动后胜率(策略6/7的
 # 启动模型口径; 策略5为顶分型/移动止损, 无"启动"概念只给总胜率+均值)。
 BACKTEST_NOTE = {
     "s5_stock_loose":  "日线·总40%胜·+0.75%/笔",
     "s5_stock_strict": "日线·总41%胜·+1.11%/笔",
-    "s5_etf_loose":    "日线·移动止损·总58%·启动14%·启动后78%",
-    "s5_etf_strict":   "日线·移动止损·总62%·启动11%·启动后55%",
+    "s5_etf_loose":    "日线·移动止损·全量2935笔·48.7%胜·+0.88%/笔",
+    "s5_etf_strict":   "日线·移动止损·全量471笔·48.8%胜·+0.75%/笔",
     "s6_stock":        "日线·总49%·启动18%·启动后89%",
     "s6_etf":          "日线·总50%·+1.23%(ETF调参)",
     "s7_stock":        "日线·总49%·启动12%·启动后60%(样本薄)",
     "s8_stock":        "日线·见 backtest_nzi_reversal.py",
     "s9_stock":        "日线·防守版·总51.5%·+1.43%/笔·10仓回撤10.7%",
+    "s10_stock":       "日线·顶分型卖·总46.1%·+0.90%/笔·首中枢+1.03%",
+    "s10_etf":         "日线·移动止损·全量535笔·44.7%胜·+0.35%/笔；2026为-2.61%",
+}
+
+# dashboard 当前 A/B/C/D 评级规则的一年期历史重放。括号内为样本数；策略十的
+# 一年历史分钟数据不足，因此这里是“不含30分共振”的日线基础评级。
+GRADE_BACKTEST_NOTE = {
+    "s5_stock_loose":  "评级分层未回测（宽松版）",
+    "s5_stock_strict": "全量3951笔·结构评级：A 37.2%(1894) · B 36.6%(1684) · C 39.9%(373)；仅表示形态完整度",
+    "s5_etf_loose":    "全量2935笔：A 52.9%(877)/+1.38% · B 45.9%(1297)/+0.66% · C 48.0%(715)/+0.65%",
+    "s5_etf_strict":   "全量471笔：A 45.9%(242)/+0.87% · B 48.9%(180)/+0.70% · C 63.3%(49)/+0.29%；胜率不排序",
+    "s6_stock":        "全量4346笔：A无样本 · B 40.6%(2522)/-0.10% · C 38.1%(1380)/-0.18% · D 36.0%(444)/-0.47%",
+    "s6_etf":          "评级分层未回测（ETF版）",
+    "s7_stock":        "全量183笔(样本薄)：A无样本 · B 40.8%(125)/-0.57% · C 50.0%(58)/+5.02%",
+    "s8_stock":        "全量1080笔：A 38.1%(21，极薄)/+1.15% · B 39.3%(516)/+0.28% · C 37.4%(543)/-0.10%",
+    "s9_stock":        "全量7591笔：A 33.9%(3456)/-0.11% · B 40.7%(3129)/-0.15% · C 40.6%(1006)/-0.23%；均值弱排序、胜率反序",
+    "s10_stock":       "全量4750笔·市场联合分档按平均收益预期排序；2026样本外 A +1.32% / B -0.29% / C -0.92%",
+    "s10_etf":         "全量535笔：A 37.3%(59)/-0.06% · B 47.2%(267)/+1.02% · C 46.7%(122)/+0.61% · D 39.1%(87)/-1.78%",
+}
+
+CONCLUSION_NOTE = {
+    "s5_stock_loose":  "三种市场状态均接近零期望，仅作观察池，不按ABC自动下单。",
+    "s5_stock_strict": "ABC仅表示形态完整度，历史收益和市场分组均未形成稳定排序。",
+    "s5_etf_loose":    "ETF当前最稳：上涨+0.90%、震荡+0.82%、下跌+1.08%(下跌仅105笔)；优先观察A。",
+    "s5_etf_strict":   "上涨+1.37%，震荡+0.21%，下跌-1.48%(仅26笔)；作为上涨环境的高要求补充。",
+    "s6_stock":        "上涨/震荡/下跌均无优势，六年总体负期望，dashboard入口已暂停。",
+    "s6_etf":          "ETF评级尚未完成多年分层验证，仅作观察。",
+    "s7_stock":        "仅183笔；上涨+4.00%但仅40笔，下跌-0.86%，评级不可作为买入顺序。",
+    "s8_stock":        "上涨+0.48%，震荡/下跌为负；A仅21笔，只在上涨环境观察。",
+    "s9_stock":        "三种市场状态均为负且A胜率最低，dashboard入口已暂停。",
+    "s10_stock":       "仅上涨环境优先(+0.61%)；震荡-0.33%，非上涨环境优先策略5 ETF宽松。",
+    "s10_etf":         "上涨环境+3.56%，震荡-2.59%；仅上涨时观察，当前不可按A自动买入。",
 }
 
 
@@ -75,6 +118,24 @@ def _bars_for(secid, n=60):
         except (ValueError, IndexError):
             continue
     return out
+
+
+def _market_context():
+    """Return the benchmark inputs used by the strategy-10 OOS grade model."""
+    bars = _bars_for("1.510300", 80)
+    closes = [bar[2] for bar in bars]
+    if len(closes) < 61 or not closes[-21] or not closes[-61]:
+        return {}
+    ma20 = sum(closes[-20:]) / 20
+    ma60 = sum(closes[-60:]) / 60
+    return {
+        "marketRet5": closes[-1] / closes[-6] - 1,
+        "marketRet20": closes[-1] / closes[-21] - 1,
+        "marketRet60": closes[-1] / closes[-61] - 1,
+        "marketAbove20": closes[-1] >= ma20,
+        "marketAbove60": closes[-1] >= ma60,
+        "marketMa20Above60": ma20 >= ma60,
+    }
 
 
 def _levels(strategy, hit):
@@ -116,6 +177,9 @@ def _levels(strategy, hit):
     if strategy == "nzi_reversal":
         return {"前高": hit.get("peak"), "回踩低": hit.get("pull_low"),
                 "止损": hit.get("stop")}
+    if strategy == "chan_final":
+        return {"中枢上沿ZG": hit.get("zg"), "中枢下沿ZD": hit.get("zd"),
+                "三买低": hit.get("buy_low"), "止损": hit.get("stop")}
     return {}
 
 
@@ -134,11 +198,14 @@ def enrich_section(key, raw):
     is_etf = raw.get("is_etf", False)
     latest = ""
     hits = []
+    market = _market_context() if strategy == "chan_final" and not is_etf else {}
     for hit in raw.get("hits", []):
         secid = _secid(hit["code"], is_etf)
         bars = _bars_for(secid)
         if bars:
             latest = max(latest, bars[-1][0])
+        if market:
+            hit.update(market)
         g = watch_grade.grade(strategy, hit, bars)
         hit.update({
             "secid": secid,
@@ -157,6 +224,8 @@ def enrich_section(key, raw):
         "is_etf": is_etf, "count": len(hits), "hits": hits,
         "error": raw.get("error"), "latest": latest,
         "btNote": BACKTEST_NOTE.get(key, ""),
+        "gradeBtNote": GRADE_BACKTEST_NOTE.get(key, "评级分层未回测"),
+        "conclusionNote": CONCLUSION_NOTE.get(key, ""),
         "updatedAt": now_bj().strftime("%Y-%m-%d %H:%M"),
     }
 
@@ -219,8 +288,14 @@ def load_payload():
             payload = None
     if payload is None:
         payload = empty_payload()
+    payload["sections"] = [
+        section for section in payload.get("sections", [])
+        if section.get("key") in VKEYS
+    ]
     for s in payload.get("sections", []):  # 老缓存也补上回测胜率注解
         s["btNote"] = BACKTEST_NOTE.get(s["key"], "")
+        s["gradeBtNote"] = GRADE_BACKTEST_NOTE.get(s["key"], "评级分层未回测")
+        s["conclusionNote"] = CONCLUSION_NOTE.get(s["key"], "")
     return payload
 
 
@@ -433,11 +508,15 @@ def build(progress_cb=None):
         os.environ.pop("BYPASS_CACHE", None)
     _ensure_screen_date()
     payload = load_payload()
-    bykey = {s["key"]: i for i, s in enumerate(payload["sections"])}
     for key in VKEYS:
         cb = (lambda d, t, k=key: progress_cb(k, d, t)) if progress_cb else None
         section = run_variant_live(key, cb)
-        payload["sections"][bykey[key]] = section
+        # 每轮重算 bykey: 新增变体在旧 watch_data.json 里不存在, 直接 append 而不是 KeyError
+        bykey = {s["key"]: i for i, s in enumerate(payload["sections"])}
+        if key in bykey:
+            payload["sections"][bykey[key]] = section
+        else:
+            payload["sections"].append(section)
     _resummarize(payload)
     save_payload(payload)
     snapshot_history(payload)

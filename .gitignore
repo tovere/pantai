@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-akshare/
 venv/
 .pytest_cache/
 
@@ -9,6 +10,7 @@ venv/
 /data_cache/*
 # 但保留每日命中记录作为历史存档(小)
 !/data_cache/watch_history/
+/data_akshare/
 # 盯盘台运行时聚合结果(重跑即生成)
 watch_data.json
 

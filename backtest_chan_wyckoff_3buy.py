@@ -47,7 +47,7 @@ def signal_at(code, name, rows, i):
     k = len(C) - 1
     if C[k] < ma(60, k) or ma(60, k) <= ma(60, k - 10):
         return None
-    if C[k] / C[k - 1] - 1 < -0.055:
+    if C[k - 1] <= 0 or C[k] / C[k - 1] - 1 < -0.055:
         return None
     for sos in range(max(65, k - 12), k):
         box = sig.find_box_before_pullback(H, L, C, V, sos - 1)
@@ -104,6 +104,10 @@ def signal_at(code, name, rows, i):
             "buy_low": pull_low,
             "stage": stage["stage"],
             "runup": stage["runup"],
+            "dist": (C[k] / upper - 1) * 100,
+            "pull_days": pull_days,
+            "vol_shrink": sig.avg(V[sos + 1 : k + 1]) / V[sos],
+            "amt": A[k] / 1e8,
         }
     return None
 
@@ -147,8 +151,8 @@ def exit_trade(rows, i, rec):
     return end, C[end], "timeout", worst
 
 
-def run_one(code, name, secid):
-    rows = sig.kline(secid)
+def run_one(code, name, secid, rows=None):
+    rows = rows if rows is not None else sig.kline(secid)
     if not rows or len(rows) < 110:
         return []
     O = [float(r[1]) for r in rows]

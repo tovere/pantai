@@ -14,6 +14,7 @@ const isS6 = computed(() => props.section.strategy === 'squeeze_launch');
 const isS7 = computed(() => props.section.strategy === 'spring_2buy');
 const isS8 = computed(() => props.section.strategy === 'nzi_reversal');
 const isS9 = computed(() => props.section.strategy === 'strategy9_distilled');
+const isS10 = computed(() => props.section.strategy === 'chan_final');
 
 const GRADE_TYPE: Record<WatchHit['grade'], TagType> = {
   A: 'success',
@@ -200,6 +201,39 @@ function flagType(type: WatchFlag['type']): TagType {
       </el-table-column>
       <el-table-column label="止损" width="72" align="right">
         <template #default="{ row }">{{ fmt(row.stop) }}</template>
+      </el-table-column>
+    </template>
+
+    <!-- 策略十 列(严格笔中枢·缠论三买) -->
+    <template v-else-if="isS10">
+      <el-table-column label="距ZG" width="72" align="right">
+        <template #default="{ row }">{{ sign(row.dist) }}%</template>
+      </el-table-column>
+      <el-table-column label="中枢#" width="60" align="center">
+        <template #default="{ row }">{{ row.stage }}</template>
+      </el-table-column>
+      <el-table-column label="中枢区间" width="132" align="center">
+        <template #default="{ row }">
+          {{ fmt(row.zd) }}-{{ fmt(row.zg) }}
+        </template>
+      </el-table-column>
+      <el-table-column label="三买低" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.buy_low) }}</template>
+      </el-table-column>
+      <el-table-column label="止损" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.stop) }}</template>
+      </el-table-column>
+      <el-table-column label="风险%" width="70" align="right">
+        <template #default="{ row }">-{{ fmt(row.risk, 1) }}%</template>
+      </el-table-column>
+      <el-table-column label="滞后" width="60" align="right" prop="lag" />
+      <el-table-column label="30分共振" width="86" align="center">
+        <template #default="{ row }">
+          <el-tag v-if="row.sub" type="success" size="small" effect="plain">
+            {{ row.sub }}
+          </el-tag>
+          <span v-else>-</span>
+        </template>
       </el-table-column>
     </template>
 

@@ -52,6 +52,10 @@ BACKTEST_NOTE = {
     "s7_etf":          "40天·样本极少·观察",
 }
 
+GRADE_BACKTEST_NOTE = {
+    key: "评级分层未回测（30分口径）" for key in VARIANTS_30F
+}
+
 
 def _bars_for_30f(secid, n=80):
     rows = cache_data.min_kline(secid, KLT)
@@ -95,6 +99,7 @@ def enrich_section(key, raw):
         "is_etf": is_etf, "count": len(hits), "hits": hits,
         "error": raw.get("error"), "latest": latest,
         "btNote": BACKTEST_NOTE.get(key, ""),
+        "gradeBtNote": GRADE_BACKTEST_NOTE.get(key, "评级分层未回测（30分口径）"),
         "updatedAt": W.now_bj().strftime("%Y-%m-%d %H:%M"),
     }
 
@@ -153,6 +158,7 @@ def load_payload():
         payload = empty_payload()
     for s in payload.get("sections", []):
         s["btNote"] = BACKTEST_NOTE.get(s["key"], "")
+        s["gradeBtNote"] = GRADE_BACKTEST_NOTE.get(s["key"], "评级分层未回测（30分口径）")
     return payload
 
 

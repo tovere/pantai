@@ -54,6 +54,23 @@ export interface WatchHit {
   kind?: 'chan_3buy' | 'coil_launch' | 'spring_2buy' | string;
   setup?: string;
   s9_priority?: number;
+  // 策略十(严格笔中枢·缠论三买)字段
+  zg?: number;
+  zd?: number;
+  risk?: number;
+  lag?: number;
+  /** 30分钟次级别共振命中的买点类型, 空串=无共振 */
+  sub?: string;
+  /** 建议仓位系数(一买0.3/二买0.6/三买1.0) */
+  pos?: number;
+  type?: number;
+  /** 策略十市场联合分档使用的沪深300ETF趋势输入 */
+  marketRet5?: number;
+  marketRet20?: number;
+  marketRet60?: number;
+  marketAbove20?: boolean;
+  marketAbove60?: boolean;
+  marketMa20Above60?: boolean;
 }
 
 export interface WatchSection {
@@ -65,6 +82,8 @@ export interface WatchSection {
   hits: WatchHit[];
   error?: null | string;
   btNote?: string;
+  gradeBtNote?: string;
+  conclusionNote?: string;
 }
 
 export interface WatchData {
