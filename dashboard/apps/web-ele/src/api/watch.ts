@@ -11,6 +11,7 @@ export type WatchBar = [string, number, number, number, number, number];
 export interface WatchHit {
   code: string;
   name: string;
+  industry?: string;
   secid: string;
   close: number;
   chg: number;

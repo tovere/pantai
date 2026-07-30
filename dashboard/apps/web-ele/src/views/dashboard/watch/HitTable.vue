@@ -81,6 +81,9 @@ function flagType(type: WatchFlag['type']): TagType {
 
     <el-table-column label="代码" width="76" prop="code" />
     <el-table-column label="名称" width="92" prop="name" show-overflow-tooltip />
+    <el-table-column label="行业" width="96" prop="industry" show-overflow-tooltip>
+      <template #default="{ row }">{{ row.industry || '-' }}</template>
+    </el-table-column>
     <el-table-column label="评级" width="104">
       <template #default="{ row }">
         <el-tag :type="gradeType(row.grade)" effect="dark" size="small">

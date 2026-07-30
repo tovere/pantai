@@ -26,6 +26,10 @@ function ma(n: number, closes: number[]): (number | string)[] {
 
 onMounted(() => {
   const bars = props.bars || [];
+  const defaultWindow = 100;
+  const zoomStart = bars.length > defaultWindow
+    ? +(((bars.length - defaultWindow) / bars.length) * 100).toFixed(2)
+    : 0;
   const dates = bars.map((b) => b[0].slice(5)); // MM-DD
   // ECharts 蜡烛图数据: [开, 收, 低, 高]
   const kdata = bars.map((b) => [b[1], b[2], b[4], b[3]]);
@@ -89,13 +93,13 @@ onMounted(() => {
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
     // 缩放: 滚轮/拖拽(inside) + 底部滑块(slider); K线与成交量 x 轴联动
     dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 },
+      { type: 'inside', xAxisIndex: [0, 1], start: zoomStart, end: 100 },
       {
         type: 'slider',
         xAxisIndex: [0, 1],
         bottom: 6,
         height: 16,
-        start: 0,
+        start: zoomStart,
         end: 100,
         brushSelect: false,
       },

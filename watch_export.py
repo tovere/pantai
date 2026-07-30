@@ -23,6 +23,7 @@ import watch_grade
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_PATH = os.path.join(HERE, "watch_data.json")
 HIST_DIR = os.path.join(HERE, "data_cache", "watch_history")
+INDUSTRY_PATH = os.path.join(HERE, "data_cache", "stock_industry.json")
 
 
 def now_bj():
@@ -107,12 +108,38 @@ def _secid(code, is_etf):
     return ("1." if code.startswith("6") else "0.") + code
 
 
-def _bars_for(secid, n=60):
+_INDUSTRY_CACHE = None
+
+
+def _industry_map():
+    global _INDUSTRY_CACHE
+    if _INDUSTRY_CACHE is not None:
+        return _INDUSTRY_CACHE
+    try:
+        with open(INDUSTRY_PATH, encoding="utf-8") as file:
+            payload = json.load(file)
+        _INDUSTRY_CACHE = payload.get("items", payload) if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        _INDUSTRY_CACHE = {}
+    return _INDUSTRY_CACHE
+
+
+def _industry_for(code, is_etf):
+    if is_etf:
+        return "ETF"
+    item = _industry_map().get(code)
+    if isinstance(item, dict):
+        return item.get("industry") or item.get("sector") or ""
+    return item or ""
+
+
+def _bars_for(secid, n=None):
     rows = cache_data.daily_kline(secid)
     if not rows:
         return []
     out = []
-    for r in rows[-n:]:
+    selected = rows if n is None else rows[-n:]
+    for r in selected:
         try:
             out.append([r[0], float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5])])
         except (ValueError, IndexError):
@@ -209,6 +236,7 @@ def enrich_section(key, raw):
         g = watch_grade.grade(strategy, hit, bars)
         hit.update({
             "secid": secid,
+            "industry": _industry_for(hit["code"], is_etf),
             "grade": g["grade"],
             "gradeScore": g["score"],
             "gradeNote": g["note"],
