@@ -10,7 +10,6 @@ import cache_data
 import watch_grade
 import backtest_chan_wyckoff_3buy as s5
 import backtest_squeeze_launch as s6
-import backtest_spring_2buy as s7
 import backtest_nzi_reversal as s8
 import backtest_strategy9_distilled as s9
 
@@ -23,14 +22,12 @@ else:
 SPECS = (
     ("s5_stock_strict", "策略五·个股·严格三买", "chan_wyckoff_3buy"),
     ("s6_stock", "策略六·个股·压缩蓄势", "squeeze_launch"),
-    ("s7_stock", "策略七·个股·Spring二买", "spring_2buy"),
     ("s8_stock", "策略八·个股·N字反包", "nzi_reversal"),
     ("s9_stock", "策略九·防守蒸馏版", "strategy9_distilled"),
 )
 MODULES = {
     "s5_stock_strict": s5,
     "s6_stock": s6,
-    "s7_stock": s7,
     "s8_stock": s8,
     "s9_stock": s9,
 }
@@ -42,8 +39,6 @@ def grade_hit(strategy, trade, rows):
     if strategy == "squeeze_launch":
         hit["bias60"] = trade["bias60"] * 100
         hit["runup"] = trade["runup"] * 100
-    elif strategy == "spring_2buy":
-        hit["up_from_spring"] = trade["up_from_spring"] * 100
     elif strategy == "strategy9_distilled":
         if trade.get("kind") == "coil_launch":
             hit["bias60"] = trade.get("bias60", 0) * 100

@@ -2,14 +2,14 @@
 type StrategyState = 'conditional' | 'paused' | 'preferred' | 'weak';
 
 interface StrategyRow {
-  down: string;
-  flat: string;
+  avgRet: string;
+  environment: string;
   name: string;
-  overall: string;
   rank: number;
   sample: number;
   state: StrategyState;
-  up: string;
+  totalWin: string;
+  type: string;
   verdict: string;
 }
 
@@ -17,99 +17,99 @@ const strategies: StrategyRow[] = [
   {
     rank: 1,
     name: '策略5 ETF宽松',
+    type: '主线',
     sample: 2935,
-    overall: '+0.88%',
-    up: '+0.90%',
-    flat: '+0.82%',
-    down: '+1.08% (105笔)',
-    verdict: '当前最稳；优先观察A，仍需回踩确认与结构止损',
+    totalWin: '48.7%',
+    avgRet: '+0.88%',
+    environment: '三种市场状态都能看',
+    verdict: '当前最稳，ETF主策略；优先观察A档，仍按结构止损执行',
     state: 'preferred',
   },
   {
     rank: 2,
-    name: '策略10 个股联合A',
-    sample: 4750,
-    overall: '按市场联合分档',
-    up: '+0.61%',
-    flat: '-0.33%',
-    down: '-0.09%',
-    verdict: '仅上涨环境优先；A不是自动买入指令',
-    state: 'conditional',
+    name: '策略7 超跌放量回踩二买',
+    type: '增强',
+    sample: 3813,
+    totalWin: '53.3%',
+    avgRet: '+1.00%',
+    environment: '2024/2025强，2023/2026弱',
+    verdict: '总胜率最高；A/C已按回测对调，只做候选增强',
+    state: 'weak',
   },
   {
     rank: 3,
-    name: '策略5 ETF严格',
-    sample: 471,
-    overall: '+0.75%',
-    up: '+1.37%',
-    flat: '+0.21%',
-    down: '-1.48% (26笔)',
-    verdict: '上涨环境的高要求候选补充',
+    name: '策略10 个股',
+    type: '策略5补充',
+    sample: 1229,
+    totalWin: '46.1%',
+    avgRet: '+0.90%',
+    environment: '只适合上涨环境',
+    verdict: '本质是更严格的三买，和策略5重叠；只看联合A',
     state: 'conditional',
   },
   {
     rank: 4,
+    name: '策略5 ETF严格',
+    type: '狙击',
+    sample: 471,
+    totalWin: '48.8%',
+    avgRet: '+0.75%',
+    environment: '上涨环境更好',
+    verdict: '信号少，适合作为ETF宽松版里的加分项',
+    state: 'conditional',
+  },
+  {
+    rank: 5,
+    name: '策略10 ETF',
+    type: '暂停',
+    sample: 535,
+    totalWin: '44.7%',
+    avgRet: '+0.35%',
+    environment: '上涨环境才有优势',
+    verdict: '和策略5 ETF重叠但更不稳，暂不作为入口',
+    state: 'paused',
+  },
+  {
+    rank: 6,
     name: '策略8 个股',
+    type: '观察',
     sample: 1080,
-    overall: '+0.11%',
-    up: '+0.48%',
-    flat: '-0.15%',
-    down: '-0.10%',
+    totalWin: '38.3%',
+    avgRet: '+0.11%',
+    environment: '只在上涨环境观察',
     verdict: '只在上涨环境观察；A仅21笔',
     state: 'weak',
   },
   {
-    rank: 5,
+    rank: 7,
     name: '策略5 个股严格',
+    type: '观察',
     sample: 3951,
-    overall: '接近零期望',
-    up: '+0.07%',
-    flat: '+0.01%',
-    down: '+0.10%',
+    totalWin: '37.2%',
+    avgRet: '接近0',
+    environment: '市场状态差异不明显',
     verdict: '没法进入推荐榜；ABC只表示形态完整度',
     state: 'weak',
   },
   {
-    rank: 6,
-    name: '策略7 个股',
-    sample: 183,
-    overall: '+1.20%',
-    up: '+4.00% (40笔)',
-    flat: '+0.74%',
-    down: '-0.86%',
-    verdict: '样本过薄且C优于B，暂不作为主策略',
-    state: 'weak',
-  },
-  {
-    rank: 7,
-    name: '策略10 ETF',
-    sample: 535,
-    overall: '+0.35%',
-    up: '+3.56%',
-    flat: '-2.59%',
-    down: '+0.70% (28笔)',
-    verdict: '仅上涨环境观察；2026总体-2.61%',
-    state: 'paused',
-  },
-  {
     rank: 8,
     name: '策略6 个股',
+    type: '关闭',
     sample: 4346,
-    overall: '-0.16%',
-    up: '-0.10%',
-    flat: '-0.05%',
-    down: '-1.05%',
+    totalWin: '39.4%',
+    avgRet: '-0.16%',
+    environment: '三种状态都无优势',
     verdict: '三种状态均无优势，入口已关闭',
     state: 'paused',
   },
   {
     rank: 9,
     name: '策略9 个股',
+    type: '关闭',
     sample: 7591,
-    overall: '-0.14%',
-    up: '-0.10%',
-    flat: '-0.09%',
-    down: '-0.52%',
+    totalWin: '37.6%',
+    avgRet: '-0.14%',
+    environment: '三种状态都偏弱',
     verdict: '三种状态均为负，入口已关闭',
     state: 'paused',
   },
@@ -142,23 +142,23 @@ function getStateType(state: StrategyState) {
   <div class="readme-page">
     <header class="page-head">
       <div>
-        <h1>策略研究说明</h1>
+        <h1>策略5-10排名</h1>
         <p>
           2020-2026 独立 AkShare 前复权日线，全量回放；平均收益均为单笔口径。
         </p>
       </div>
-      <el-tag type="info" effect="plain">更新于 2026-07-29</el-tag>
+      <el-tag type="info" effect="plain">更新于 2026-07-30</el-tag>
     </header>
 
     <section class="summary-band">
       <div class="summary-main">
         <span class="eyebrow">当前结论</span>
         <strong
-          >非上涨环境优先策略5 ETF宽松；上涨环境可增加策略10个股联合A。</strong
+          >最有价值的是策略5、策略7、策略10；策略10更像策略5的严格缠论补充。</strong
         >
       </div>
       <div class="summary-rule">
-        A表示历史收益优先级，不代表必然盈利；入场确认、仓位和结构止损仍是独立条件。
+        排名看实盘可用性，不只看胜率；策略7胜率最高，但2023/2026偏弱，所以排第二。
       </div>
     </section>
 
@@ -172,7 +172,7 @@ function getStateType(state: StrategyState) {
       <div class="table-wrap">
         <el-table :data="strategies" row-key="name" stripe>
           <el-table-column prop="rank" label="#" width="52" />
-          <el-table-column label="策略" min-width="180">
+          <el-table-column label="策略" min-width="210">
             <template #default="{ row }">
               <div class="strategy-name">
                 <span>{{ row.name }}</span>
@@ -186,12 +186,12 @@ function getStateType(state: StrategyState) {
               </div>
             </template>
           </el-table-column>
+          <el-table-column prop="type" label="定位" width="100" />
           <el-table-column prop="sample" label="样本" width="88" />
-          <el-table-column prop="overall" label="总体" min-width="120" />
-          <el-table-column prop="up" label="上涨" min-width="120" />
-          <el-table-column prop="flat" label="震荡" min-width="120" />
-          <el-table-column prop="down" label="下跌" min-width="135" />
-          <el-table-column prop="verdict" label="结论" min-width="280" />
+          <el-table-column prop="totalWin" label="总胜率" width="96" />
+          <el-table-column prop="avgRet" label="单笔均值" width="108" />
+          <el-table-column prop="environment" label="适用环境" min-width="190" />
+          <el-table-column prop="verdict" label="结论" min-width="330" />
         </el-table>
       </div>
     </section>
@@ -239,6 +239,26 @@ function getStateType(state: StrategyState) {
       <p>
         三种状态都接近零期望，且滚动年度ABC经常反转。因此策略5个股可以继续提供结构候选，但不能与策略5
         ETF宽松或上涨环境中的策略10个股并列为实盘优先策略。
+      </p>
+    </section>
+
+    <section class="section-block focus-note">
+      <div class="section-head">
+        <div>
+          <h2>策略7 ABC复测</h2>
+          <p>AkShare独立缓存，2020-01-01至2026-07-29，L2止损加涨6%后MA5保护。</p>
+        </div>
+      </div>
+      <div class="focus-grid">
+        <div><span>A档</span><strong>1044笔 / 58.2%胜</strong></div>
+        <div><span>B档</span><strong>2469笔 / 52.4%胜</strong></div>
+        <div><span>C档</span><strong>300笔 / 43.7%胜</strong></div>
+        <div><span>总体</span><strong>3813笔 / 53.3%胜</strong></div>
+      </div>
+      <p>
+        当前ABC规则按反弹放量、回踩缩量、L2抬高、止损距离和冲高回落评分；它描述的是形态完整度，
+        不是历史收益优先级。复测后原C档胜率最高，因此Dashboard已将策略7的A/C对调：新A表示回测胜率更高，
+        但仍需要结合当天市场环境、止损距离和量价确认。
       </p>
     </section>
   </div>
@@ -315,13 +335,16 @@ h2 {
   overflow-x: auto;
 }
 .table-wrap :deep(.el-table) {
-  min-width: 1080px;
+  min-width: 1160px;
 }
 .strategy-name {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+.strategy-name span {
+  white-space: nowrap;
 }
 .regime-grid {
   display: grid;

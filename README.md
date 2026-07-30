@@ -27,7 +27,7 @@ ma_backtest/                    # 项目根
 | 四 · 新高股回踩缩量低吸 | [`strategy_newhigh/`](strategy_newhigh/README.md) | 成交额大的区间新高(放量) + 次日缩量回踩不破昨日阳线低点 + 收盘承接 | ⚠️ 胜率9.4%、单笔+5.47%，但5仓组合−15.6%/回撤29.2%；极端肥尾，不适合单独机械跑 |
 | 五 · 周线向上 + 日线缠论/威科夫三买 | [`screen_chan_wyckoff_3buy.py`](screen_chan_wyckoff_3buy.py) / [`backtest_chan_wyckoff_3buy.py`](backtest_chan_wyckoff_3buy.py) | 周线向上过滤；日线 TR/中枢后 SOS 放量离开；回踩中枢上沿形成 LPS/三买；**中枢序号过滤(严格版只买第一个中枢)**；确认顶分型卖，跌破三买低点/中枢上沿止损 | ✅ 严格入场更适合作为下单条件；宽松版适合作为候选池 |
 | 六 · C段加速前临界点(压缩蓄势) | [`screen_squeeze_launch.py`](screen_squeeze_launch.py) / [`backtest_squeeze_launch.py`](backtest_squeeze_launch.py) | 埋伏**强势票**(前涨≥25%)缩量歇脚的压缩点：均线粘合+振幅收窄+缩量地量+贴前高横住；未启动时间止损、启动后移动止损 | ✅ 动量版 +1.10%/笔(接近策略2/3)；启动票胜率~88%吃 +8~12%；关键发现：加速偏爱强势票，非低位票 |
-| 七 · 威科夫Spring+缠论二买(底背驰) | [`screen_spring_2buy.py`](screen_spring_2buy.py) / [`backtest_spring_2buy.py`](backtest_spring_2buy.py) | 上升趋势内(周MA10上行)假跌破短支撑收回(Spring)+**强底背驰**(MACD-DIF背离幅度≥门槛)+回踩不破更高低(二买)+站回MA10；止损贴Spring下方，移动止损、快砍空等 | ✅ 调优后 **+3.10%/笔、50%胜、失败单归零**(个股)。⚠️ 一年仅42信号、靠肥右尾(启动单+26%)，样本薄、待跨期验证 |
+| 七 · 超跌放量回踩二买 | [`screen_oversold_volume_2buy.py`](screen_oversold_volume_2buy.py) / [`backtest_oversold_volume_2buy.py`](backtest_oversold_volume_2buy.py) | 低位超跌后首次放量反弹，随后2-8日缩量回踩，L2不破L1并形成更高低点，二次转强买入；跌破L2止损，浮盈6%后用MA5保护 | ✅ AkShare全量3813笔，胜率53.3%、均值+1.00%。ABC已按回测把A/C对调：A档58.2%胜；但2023/2026为负，只作候选增强 |
 | 八 · 放量突破年线后缩量回踩 | [`backtest_yearline_pullback.py`](backtest_yearline_pullback.py) | MA250 放量突破后，首次缩量回踩年线且收盘守住买入；年线失守/硬止损/启动后移动止损卖出 | ❌ 本地一年 355 笔，胜率 16.6%、均值 -1.28%、中位 -3.07%；形态常见但假突破太多，不能单独机械跑 |
 | 九 · 八策蒸馏结构版 | [`backtest_strategy9_distilled.py`](backtest_strategy9_distilled.py) | 淘汰策略1/4/8独立入场；默认只留三买、压缩蓄势、Spring二买，统一硬止损/移动止损与组合池；MA5突破、MA20回踩可用 env 开关扩展 | ✅ 结构精选版 1788 笔，胜率42.7%、均值+0.82%；8仓 +39.6%/回撤24.5%。广撒版噪音大，默认不用 |
 | 十 · 缠论完备体系 | [`strategy_chan_final/`](strategy_chan_final/README.md) | 把缠论**整体**代码化：包含处理→分型→新笔→笔中枢(ZG/ZD/GG/DD)→走势类型(505)→MACD背驰→一/二/三类买卖点 + 周线大级别过滤 + 30分次级别共振(702/706/708) + 两套利润最大模式(70c/70d) | ✅ **三买有效**：全市场1229笔、+0.90%/笔(顶分型卖)，换成缠论原教旨"持股到一卖"是 +3.39%/笔但胜率仅37%、中位−4.7%。真中枢计数复现了策略五"第一个中枢最稳"(+1.03% vs 第2个−0.08%)。**ETF版更肥**: 移动止损 +1.42%/笔、首中枢 58%胜/+2.63%。⚠️ 一买是接飞刀(−0.14%) |
@@ -226,9 +226,9 @@ ETF_ONLY=1 EXIT_MODE=trail STRICT_BUY=1 python3 backtest_chan_wyckoff_3buy.py   
 # 个股保留顶分型（trail 在个股上反而变差）
 STRICT_BUY=1 python3 backtest_chan_wyckoff_3buy.py
 
-# 策略7(Spring/二买+底背驰)——默认已是胜出配置(短支撑25+周线loose+背驰0.005+快砍空等4)
-SCREEN_DATE=2026-07-03 python3 screen_spring_2buy.py
-python3 backtest_spring_2buy.py
+# 策略7·超跌放量回踩二买：AkShare独立缓存，不污染 data_cache
+ABC_DATA_SOURCE=akshare EXIT_MODE=low_ma5 MA5_ACTIVATE=0.06 python3 backtest_oversold_volume_2buy.py
+SCREEN_DATE=2026-07-29 python3 screen_oversold_volume_2buy.py
 ```
 
-策略七调优结论(本地一年, 个股)：`stop` 失败单随背驰门槛 `MIN_DIV_PCT` 归零是关键——真背驰(动能明显衰竭)才是 Spring 有效前提，弱背驰=普通阴跌(接飞刀)。背驰门槛有甜点：0(松, 144信号/+0.02%) → **0.005(42信号/+3.10%/50%胜/失败单0)** → 0.01(过严, 11信号/+0.47%)。另需短支撑(`LOW_BACK=25`, 洗盘非抄底)、宽松周线(`WEEKLY_FILTER=loose`, 周MA10上行+不深破周线近低)、`LAUNCH_WAIT=4`(空等早撤)。**⚠️ 42信号/年偏薄、收益靠少数启动单肥右尾，属"质胜量"利基, 下结论前需跨更长周期验证。**
+策略七新版结论(AkShare 2020-01-01~2026-07-29，个股)：3813笔，胜率53.3%，均值+1.00%，中位+1.25%。按Dashboard原始结构分档复测后，原C档胜率最高、原A档最低，因此当前Dashboard已将策略7的A/C对调：A 1044笔/58.2%胜，B 2469笔/52.4%胜，C 300笔/43.7%胜。注意2023、2026年度为负，不能脱离市场环境机械买入。

@@ -239,6 +239,38 @@ def grade_spring(hit, bars):
     return {"grade": grade, "score": score, "flags": flags, "note": note}
 
 
+def grade_oversold_volume_2buy(hit, bars):
+    """策略7评级。
+
+    回测显示原始结构评分呈反向收益分层：原C档胜率最高、原A档最低。
+    因此保留结构flags解释原因，但最终A/C对调，让Dashboard的A表示实测更优先。
+    """
+    flags, score = [], 0
+    rebound_vr = _f(hit.get("rebound_vr"))
+    pull_ratio = _f(hit.get("pull_vol_ratio"))
+    higher_low = _f(hit.get("higher_low"))
+    risk = (_f(hit.get("close")) / _f(hit.get("stop")) - 1) * 100 if _f(hit.get("stop")) else 99
+    if rebound_vr >= 2:
+        score += 1
+        flags.append({"text": f"反弹放量{rebound_vr:.1f}x", "type": "good"})
+    if pull_ratio <= 0.5:
+        score += 1
+        flags.append({"text": f"回踩缩量{pull_ratio:.2f}", "type": "good"})
+    if higher_low >= 3:
+        score += 1
+        flags.append({"text": f"L2抬高{higher_low:.1f}%", "type": "good"})
+    if risk > 8:
+        score -= 1
+        flags.append({"text": f"止损偏远-{risk:.1f}%", "type": "warn"})
+    if _rejection(bars):
+        score -= 2
+        flags.append({"text": "冲高回落", "type": "bad"})
+    raw_grade = _decide(score, flags)
+    grade = {"A": "C", "C": "A"}.get(raw_grade, raw_grade)
+    return {"grade": grade, "score": score, "flags": flags,
+            "note": "超跌放量反弹后缩量回踩，L2不破；涨6%后用五日线保护。ABC已按回测收益分层做A/C对调"}
+
+
 def grade_nzi(hit, bars):
     """策略八(N字反包)评级: 反包力度(放量)+ 洗盘干净(缩量)+ 歇够久 + 止损距离/量能。"""
     flags, score = [], 0
@@ -400,8 +432,8 @@ def grade(strategy, hit, bars):
         return grade_three_buy(hit, bars)
     if strategy == "squeeze_launch":
         return grade_squeeze(hit, bars)
-    if strategy == "spring_2buy":
-        return grade_spring(hit, bars)
+    if strategy == "oversold_volume_2buy":
+        return grade_oversold_volume_2buy(hit, bars)
     if strategy == "strategy9_distilled":
         kind = hit.get("kind")
         if kind == "coil_launch":

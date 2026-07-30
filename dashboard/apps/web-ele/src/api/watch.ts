@@ -39,7 +39,14 @@ export interface WatchHit {
   vol_ratio?: number;
   coil?: string;
   stop?: number;
-  // 策略七(Spring二买背驰)字段
+  // 策略七(超跌放量回踩二买；兼容旧Spring字段)
+  l1?: number;
+  l2?: number;
+  higher_low?: number;
+  rebound_vr?: number;
+  pull_vol_ratio?: number;
+  oversold20?: number;
+  rebound_date?: string;
   range_low?: number;
   spring_low?: number;
   spring_date?: string;

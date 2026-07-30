@@ -11,7 +11,7 @@ type TagType = 'danger' | 'info' | 'primary' | 'success' | 'warning';
 
 const isS5 = computed(() => props.section.strategy === 'chan_wyckoff_3buy');
 const isS6 = computed(() => props.section.strategy === 'squeeze_launch');
-const isS7 = computed(() => props.section.strategy === 'spring_2buy');
+const isS7 = computed(() => props.section.strategy === 'oversold_volume_2buy');
 const isS8 = computed(() => props.section.strategy === 'nzi_reversal');
 const isS9 = computed(() => props.section.strategy === 'strategy9_distilled');
 const isS10 = computed(() => props.section.strategy === 'chan_final');
@@ -139,18 +139,17 @@ function flagType(type: WatchFlag['type']): TagType {
 
     <!-- 策略七 列 -->
     <template v-else-if="isS7">
-      <el-table-column label="背驰%" width="70" align="right">
-        <template #default="{ row }">{{ fmt(row.div_pct) }}</template>
+      <el-table-column label="反弹量比" width="76" align="right">
+        <template #default="{ row }">{{ fmt(row.rebound_vr) }}x</template>
       </el-table-column>
-      <el-table-column label="离Spring" width="80" align="right">
-        <template #default="{ row }">{{ sign(row.up_from_spring) }}%</template>
+      <el-table-column label="回踩量比" width="76" align="right">
+        <template #default="{ row }">{{ fmt(row.pull_vol_ratio) }}</template>
       </el-table-column>
-      <el-table-column label="Spring低" width="80" align="right">
-        <template #default="{ row }">{{ fmt(row.spring_low) }}</template>
+      <el-table-column label="L2抬高" width="72" align="right">
+        <template #default="{ row }">{{ sign(row.higher_low) }}%</template>
       </el-table-column>
-      <el-table-column label="Spring日" width="72" align="center" prop="spring_date" />
-      <el-table-column label="区间下沿" width="80" align="right">
-        <template #default="{ row }">{{ fmt(row.range_low) }}</template>
+      <el-table-column label="L1 / L2" width="112" align="center">
+        <template #default="{ row }">{{ fmt(row.l1) }} / {{ fmt(row.l2) }}</template>
       </el-table-column>
       <el-table-column label="止损" width="72" align="right">
         <template #default="{ row }">{{ fmt(row.stop) }}</template>
