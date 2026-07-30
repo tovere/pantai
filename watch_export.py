@@ -44,7 +44,9 @@ VARIANTS = {
     # 策略十用回测选出的最优参数: 只做三买(一买负期望/二买弱)、周线MA口径向上、
     # 开次级别30分共振(区间套708)。出场对应顶分型卖, 见 strategy_chan_final/README。
     "s10_stock":       ("strategy_chan_final/screen.py", "策略十·个股·缠论三买(严格笔中枢)",
-                        {"ENABLE_TYPES": "3", "WEEKLY_MODE": "ma", "SUB_LEVEL": "1"}),
+                        {"ENABLE_TYPES": "3", "WEEKLY_MODE": "ma", "SUB_LEVEL": "1",
+                         "S10_STAGE1_ONLY": "1", "S10_MAX_LAG": "2", "S10_MAX_RISK": "8",
+                         "S10_REQUIRE_UP": "1"}),
     # ETF 版: 出场必须换成移动止损(实测 +1.42% vs 顶分型 +0.41%), 且只买第1个中枢
     # (ETF 第2个中枢 -2.36%/23%胜, 由 watch_grade 直接判 D)。与策略五 ETF 结论一致。
     "s10_etf":         ("strategy_chan_final/screen.py", "策略十·ETF·缠论三买(移动止损)",
@@ -89,7 +91,7 @@ BACKTEST_NOTE = {
     "s11_vdb_strict":  "严格·≥100亿·破昨高+距≤6+缩≤0.55+pull2-4",
     "s8_stock":        "全量1080笔·38.3%胜·+0.11%/笔",
     "s9_stock":        "全量7591笔·37.6%胜·-0.14%/笔；入口已暂停",
-    "s10_stock":       "日线·顶分型卖·总46.1%·+0.90%/笔·首中枢+1.03%",
+    "s10_stock":       "调优·首中枢+lag≤2+risk≤8+上涨市·317笔·53.6%胜·+2.05%/笔",
     "s10_etf":         "日线·移动止损·全量535笔·44.7%胜·+0.35%/笔；2026为-2.61%",
 }
 
@@ -107,7 +109,7 @@ GRADE_BACKTEST_NOTE = {
     "s11_vdb_strict":  "严格共用s11评级权重；入场另要求破昨高/距≤6/缩≤0.55",
     "s8_stock":        "全量1080笔：A 38.1%(21，极薄)/+1.15% · B 39.3%(516)/+0.28% · C 37.4%(543)/-0.10%",
     "s9_stock":        "全量7591笔：A 33.9%(3456)/-0.11% · B 40.7%(3129)/-0.15% · C 40.6%(1006)/-0.23%；均值弱排序、胜率反序",
-    "s10_stock":       "三买有效口径1229笔·46.1%胜·+0.90%；市场联合A仅作上涨环境加分",
+    "s10_stock":       "调优后317笔：胜53.6%/+2.05%(原1229笔46.1%/+0.90%)；非上涨市不展示",
     "s10_etf":         "全量535笔：A 37.3%(59)/-0.06% · B 47.2%(267)/+1.02% · C 46.7%(122)/+0.61% · D 39.1%(87)/-1.78%",
 }
 
@@ -123,7 +125,7 @@ CONCLUSION_NOTE = {
     "s11_vdb_strict":  "主看版：总市值≥100亿；要阳线破昨高，勿深跌硬抄、勿嵌套二段追。",
     "s8_stock":        "弱观察：上涨环境才看，样本A仅21笔，不进主策略。",
     "s9_stock":        "三种市场状态均为负且A胜率最低，dashboard入口已暂停。",
-    "s10_stock":       "策略5的严格缠论补充：只在上涨环境看联合A，非上涨环境优先策略5 ETF宽松。",
+    "s10_stock":       "已调优：只做首中枢、lag≤2、止损距≤8%，且仅上涨市出票；非上涨优先策略5 ETF。",
     "s10_etf":         "和策略5 ETF重叠但更不稳；仅上涨环境观察，当前暂停主入口。",
 }
 
@@ -249,13 +251,20 @@ def _ensure_screen_date():
 
 def enrich_section(key, raw):
     """把子进程回收的原始 hits 挂上评级/K线/止损位, 组成一个 section。"""
-    script, title, _ = VARIANTS[key]
+    script, title, env_extra = VARIANTS[key]
     strategy = raw.get("strategy", "")
     is_etf = raw.get("is_etf", False)
     latest = ""
     hits = []
     market = _market_context() if strategy == "chan_final" and not is_etf else {}
+    require_up = env_extra.get("S10_REQUIRE_UP", "0") != "0" and not is_etf
     for hit in raw.get("hits", []):
+        if require_up:
+            if not market:
+                continue
+            if not (market.get("marketAbove20") and market.get("marketAbove60")
+                    and float(market.get("marketRet20") or 0) >= 0):
+                continue
         secid = _secid(hit["code"], is_etf)
         bars = _bars_for(secid)
         if bars:

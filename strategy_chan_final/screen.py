@@ -70,6 +70,15 @@ def check(code, name, secid, rows):
         "amt": round(A[i] / 1e8, 1),
         "sub": "",
     }
+    # 个股调优硬过滤(回测最优: 首中枢+lag≤2+risk≤8 + 上涨市; 上涨市在 enrich 层判)
+    if os.environ.get("S10_STAGE1_ONLY", "0") != "0" and item.get("stage", 0) != 1:
+        return None
+    max_lag = int(os.environ.get("S10_MAX_LAG", "99"))
+    if item.get("lag", 99) > max_lag:
+        return None
+    max_risk = float(os.environ.get("S10_MAX_RISK", "99"))
+    if item.get("risk", 99) > max_risk:
+        return None
     if SUB_LEVEL:
         # 二买必须去次级别找一买(702); 一买/三买用次级别买点做区间套/小背驰确认(708/70b)。
         want = (1,) if bp["type"] == 2 else (1, 2, 3)
