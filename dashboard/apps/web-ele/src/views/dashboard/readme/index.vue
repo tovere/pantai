@@ -49,6 +49,17 @@ const strategies: StrategyRow[] = [
   },
   {
     rank: 4,
+    name: '策略11 VDB回踩严格',
+    type: '观察增强',
+    sample: 210,
+    totalWin: '46.7%',
+    avgRet: '+1.08%',
+    environment: '≥100亿；不要求周线/箱体；补策略5盲区',
+    verdict: '主看严格版(≥100亿)；宽松观察池用≥200亿·46.5%胜',
+    state: 'weak',
+  },
+  {
+    rank: 5,
     name: '策略5 ETF严格',
     type: '狙击',
     sample: 471,
@@ -59,7 +70,7 @@ const strategies: StrategyRow[] = [
     state: 'conditional',
   },
   {
-    rank: 5,
+    rank: 6,
     name: '策略10 ETF',
     type: '暂停',
     sample: 535,
@@ -70,7 +81,7 @@ const strategies: StrategyRow[] = [
     state: 'paused',
   },
   {
-    rank: 6,
+    rank: 7,
     name: '策略8 个股',
     type: '观察',
     sample: 1080,
@@ -81,7 +92,7 @@ const strategies: StrategyRow[] = [
     state: 'weak',
   },
   {
-    rank: 7,
+    rank: 8,
     name: '策略5 个股严格',
     type: '观察',
     sample: 3951,
@@ -92,7 +103,7 @@ const strategies: StrategyRow[] = [
     state: 'weak',
   },
   {
-    rank: 8,
+    rank: 9,
     name: '策略6 个股',
     type: '关闭',
     sample: 4346,
@@ -103,7 +114,7 @@ const strategies: StrategyRow[] = [
     state: 'paused',
   },
   {
-    rank: 9,
+    rank: 10,
     name: '策略9 个股',
     type: '关闭',
     sample: 7591,

@@ -313,6 +313,110 @@ def grade_nzi(hit, bars):
     return {"grade": grade, "score": score, "flags": flags, "note": note}
 
 
+def grade_vdb_pullback(hit, bars):
+    """策略十一评级(仅本策略): 在计划权重基础上按 ≥200亿收紧池网格微调阈值/权重,
+    验收胜率+均值 A>B>C。
+
+    加分: 破昨高、未贴死、缩量≤0.45/0.55、距低4-10%、回踩3-6天、ret20强、额≥5亿。
+    减分: 贴死、距≤4%、回踩2天、深跌背景、冲高回落、阴线。
+    """
+    flags, score = [], 0
+    dist = _f(hit.get("dist_vdb"))
+    shrink = _f(hit.get("vol_shrink"))
+    pull = int(hit.get("pull_days", 0))
+    chain = int(hit.get("chain", 0))
+    reversal = int(hit.get("reversal", 0))
+    reclaim = int(hit.get("reclaim", 0))
+    yang = int(hit.get("yang", 1 if _f(hit.get("chg")) > 0 else 0))
+    ret20 = _f(hit.get("ret20"))
+    amt = _f(hit.get("amt"))
+    vdb_low = _f(hit.get("vdb_low"))
+    buy_low = _f(hit.get("buy_low"))
+    touch = bool(vdb_low and buy_low and buy_low <= vdb_low * 1.02)
+
+    if not yang:
+        flags.append({"text": "阴线入场", "type": "bad"})
+
+    if reclaim:
+        score += 1
+        flags.append({"text": "收盘破昨高", "type": "good"})
+
+    if not touch:
+        score += 1
+        flags.append({"text": "回踩未贴死", "type": "good"})
+    else:
+        score -= 1
+        flags.append({"text": "回踩贴死VDB低", "type": "warn"})
+
+    if shrink and shrink <= 0.45:
+        score += 2
+        flags.append({"text": "缩量很干净", "type": "good"})
+    elif shrink and shrink <= 0.55:
+        score += 1
+        flags.append({"text": "缩量干净", "type": "good"})
+    elif shrink >= 0.70:
+        score -= 1
+        flags.append({"text": f"缩量不足({shrink:.2f})", "type": "warn"})
+
+    if 4 <= dist <= 10:
+        score += 1
+        flags.append({"text": f"距低甜区(+{dist:.0f}%)", "type": "good"})
+    elif dist <= 4:
+        score -= 1
+        flags.append({"text": f"贴死易洗(+{dist:.0f}%)", "type": "warn"})
+    elif dist >= 12:
+        score -= 2
+        flags.append({"text": f"离VDB低远(+{dist:.0f}%)", "type": "warn"})
+
+    if 3 <= pull <= 6:
+        score += 1
+        flags.append({"text": f"回踩{pull}天", "type": "good"})
+    elif pull == 2:
+        score -= 1
+
+    if chain >= 1:
+        score -= 2
+        flags.append({"text": f"嵌套第{chain + 1}段", "type": "warn"})
+
+    if reversal:
+        score -= 1
+        flags.append({"text": "深跌/低位背景偏弱", "type": "warn"})
+
+    if ret20 > 10:
+        score += 1
+        flags.append({"text": "近20日偏强", "type": "good"})
+
+    if amt >= 5:
+        score += 1
+
+    if _rejection(bars):
+        score -= 2
+        flags.append({"text": "冲高回落", "type": "bad"})
+
+    # 网格验收阈值: A = score≥4 且缩量≤0.45; B≥1; 其余 C; bad 最高 B
+    has_bad = any(f["type"] == "bad" for f in flags)
+    if has_bad:
+        grade = "B" if score >= 1 else "C"
+    elif score >= 4 and shrink and shrink <= 0.45:
+        grade = "A"
+    elif score >= 1:
+        grade = "B"
+    else:
+        grade = "C"
+
+    if grade == "A":
+        note = "VDB回踩转强, 接近下单: " + "、".join(
+            f["text"] for f in flags if f["type"] == "good"
+        )
+    elif has_bad:
+        note = "命中但盘口减分 —— 观察不追"
+    elif grade == "B":
+        note = "VDB回踩候选, 破昨高/缩量一般"
+    else:
+        note = "偏弱: 贴死洗盘、追高或深跌背景"
+    return {"grade": grade, "score": score, "flags": flags, "note": note}
+
+
 def grade_chan_final(hit, bars):
     """策略十(严格笔中枢·缠论三买)评级。
 
@@ -428,6 +532,8 @@ def grade_chan_final(hit, bars):
 def grade(strategy, hit, bars):
     if strategy == "chan_final":
         return grade_chan_final(hit, bars)
+    if strategy == "vdb_pullback":
+        return grade_vdb_pullback(hit, bars)
     if strategy == "chan_wyckoff_3buy":
         return grade_three_buy(hit, bars)
     if strategy == "squeeze_launch":

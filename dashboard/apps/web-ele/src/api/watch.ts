@@ -79,6 +79,17 @@ export interface WatchHit {
   marketAbove20?: boolean;
   marketAbove60?: boolean;
   marketMa20Above60?: boolean;
+  // 策略十一(VDB后缩量回踩)字段
+  vdb_date?: string;
+  vdb_low?: number;
+  vdb_high?: number;
+  chain?: number;
+  dist_vdb?: number;
+  ret20?: number;
+  reclaim?: number;
+  reversal?: number;
+  /** 总市值(亿元) */
+  mktcap?: number;
 }
 
 export interface WatchSection {

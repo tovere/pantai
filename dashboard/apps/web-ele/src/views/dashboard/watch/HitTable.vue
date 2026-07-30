@@ -15,6 +15,7 @@ const isS7 = computed(() => props.section.strategy === 'oversold_volume_2buy');
 const isS8 = computed(() => props.section.strategy === 'nzi_reversal');
 const isS9 = computed(() => props.section.strategy === 'strategy9_distilled');
 const isS10 = computed(() => props.section.strategy === 'chan_final');
+const isS11 = computed(() => props.section.strategy === 'vdb_pullback');
 
 const GRADE_TYPE: Record<WatchHit['grade'], TagType> = {
   A: 'success',
@@ -236,6 +237,30 @@ function flagType(type: WatchFlag['type']): TagType {
           </el-tag>
           <span v-else>-</span>
         </template>
+      </el-table-column>
+    </template>
+
+    <!-- 策略十一 列(VDB后缩量回踩) -->
+    <template v-else-if="isS11">
+      <el-table-column label="VDB日" width="66" align="center" prop="vdb_date" />
+      <el-table-column label="距VDB低" width="78" align="right">
+        <template #default="{ row }">{{ sign(row.dist_vdb) }}%</template>
+      </el-table-column>
+      <el-table-column label="回踩天" width="66" align="right" prop="pull_days" />
+      <el-table-column label="缩量比" width="66" align="right">
+        <template #default="{ row }">{{ fmt(row.vol_shrink) }}</template>
+      </el-table-column>
+      <el-table-column label="嵌套" width="56" align="center">
+        <template #default="{ row }">{{ row.chain ?? 0 }}</template>
+      </el-table-column>
+      <el-table-column label="VDB低/止损" width="100" align="right">
+        <template #default="{ row }">{{ fmt(row.stop) }}</template>
+      </el-table-column>
+      <el-table-column label="20日%" width="66" align="right">
+        <template #default="{ row }">{{ sign(row.ret20) }}</template>
+      </el-table-column>
+      <el-table-column label="市值(亿)" width="78" align="right">
+        <template #default="{ row }">{{ fmt(row.mktcap, 0) }}</template>
       </el-table-column>
     </template>
 

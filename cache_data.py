@@ -14,6 +14,7 @@ UA = "Mozilla/5.0"
 CACHE_DIR = Path(os.environ.get("MA_CACHE_DIR", "data_cache"))
 UNIVERSE_PATH = CACHE_DIR / "universe.json"
 ETF_UNIVERSE_PATH = CACHE_DIR / "etf_universe.json"
+MKTCAP_PATH = CACHE_DIR / "stock_mktcap.json"
 DAILY_DIR = CACHE_DIR / "daily"
 MIN_DIR = CACHE_DIR / "minute"
 MIN_KLTS = (5, 30)  # 缓存的分钟级别
@@ -157,6 +158,44 @@ def etf_universe(force=False):
     """场内 ETF 列表(新浪 etf_hq_fund)。缓存 etf_universe.json。"""
     return _cached_list(ETF_UNIVERSE_PATH, "etf_hq_fund", _keep_etf, force)
 
+
+def stock_mktcap(force=False, batch=300):
+    """主板个股总市值(元)。腾讯 qt ~45 字段(单位亿)×1e8, 缓存 stock_mktcap.json(按日)。
+
+    东财 clist 常被限流, 改走腾讯批量(与 snapshot 同源)。返回 {code: mktcap_yuan}；
+    拉取过少/失败则回退昨日缓存, 避免用不完整结果覆盖。
+    """
+    disk = _read_json(MKTCAP_PATH)
+    today = date.today().isoformat()
+    if not (force or BYPASS_CACHE) and disk and disk.get("date") == today and disk.get("items"):
+        return {k: float(v) for k, v in disk["items"].items()}
+
+    items = universe()
+    out = {}
+    for i in range(0, len(items), batch):
+        codes = ",".join(_tx_code(sec) for _, _, sec in items[i : i + batch])
+        for line in _get_gbk(f"https://qt.gtimg.cn/q={codes}").split("\n"):
+            if '="' not in line:
+                continue
+            sym = line.split("=", 1)[0].strip()[2:]  # v_sh600519 -> sh600519
+            f = line.split('="', 1)[1].rstrip('";').strip().split("~")
+            if len(f) < 46 or len(sym) < 8:
+                continue
+            code = sym[2:]
+            # ~44/~45: 总市值(亿); 优先 45, 空则 44
+            mv_yi = _num(f[45]) or _num(f[44])
+            if code and mv_yi and mv_yi > 0:
+                out[code] = mv_yi * 1e8
+
+    # 主板应有数千只; 少于 1000 视为失败, 不覆盖磁盘
+    if len(out) >= 1000:
+        _atomic_write_json(MKTCAP_PATH, {
+            "date": today, "source": "tencent.qt.mktcap", "items": out,
+        })
+        return out
+    if disk and disk.get("items"):
+        return {k: float(v) for k, v in disk["items"].items()}
+    return out
 
 def _daily_path(secid):
     return DAILY_DIR / f"{secid}.json"

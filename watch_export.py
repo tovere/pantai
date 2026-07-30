@@ -50,10 +50,30 @@ VARIANTS = {
     "s10_etf":         ("strategy_chan_final/screen.py", "策略十·ETF·缠论三买(移动止损)",
                         {"ETF_ONLY": "1", "ENABLE_TYPES": "3", "WEEKLY_MODE": "ma",
                          "SUB_LEVEL": "1", "PULLBACK_GG": "1"}),
+    "s11_vdb_strict":  ("screen_vdb_pullback.py",       "策略十一·VDB后缩量回踩·严格",
+                        {"STRICT_BUY": "1", "MIN_MKTCAP": "10000000000"}),
+    "s11_vdb":         ("screen_vdb_pullback.py",       "策略十一·VDB后缩量回踩·宽松",
+                        {"STRICT_BUY": "0", "MIN_MKTCAP": "20000000000"}),
 }
 # 暂停展示/运行但保留配置与回测代码，移出集合即可恢复。
 DISABLED_VARIANTS = {"s6_stock", "s9_stock"}
-VKEYS = [key for key in VARIANTS if key not in DISABLED_VARIANTS]
+# 侧栏顺序对齐 readme 排名: 5ETF宽松 > 7 > 10个股 > 11严格/宽松 > 5ETF严格 > …
+VKEYS_ORDER = [
+    "s5_etf_loose",
+    "s7_stock",
+    "s10_stock",
+    "s11_vdb_strict",
+    "s11_vdb",
+    "s5_etf_strict",
+    "s10_etf",
+    "s8_stock",
+    "s5_stock_strict",
+    "s5_stock_loose",
+    "s6_etf",
+]
+VKEYS = [k for k in VKEYS_ORDER if k in VARIANTS and k not in DISABLED_VARIANTS]
+# 兜底: 未列入 ORDER 的启用变体仍挂在末尾
+VKEYS += [k for k in VARIANTS if k not in DISABLED_VARIANTS and k not in VKEYS]
 
 # 回测注解(日线口径, 数据见 README)。总胜率 / 启动几率 / 启动后胜率(策略6/7的
 # 启动模型口径; 策略5为顶分型/移动止损, 无"启动"概念只给总胜率+均值)。
@@ -65,6 +85,8 @@ BACKTEST_NOTE = {
     "s6_stock":        "全量4346笔·39.4%胜·-0.16%/笔；入口已暂停",
     "s6_etf":          "ETF版仅调参样本，未完成多年分层验证",
     "s7_stock":        "全量3813笔·L2止损·涨6%后五日线保护·53.3%胜·+1.00%/笔",
+    "s11_vdb":         "宽松·≥200亿·收紧后1970笔·总胜46.9%·均值+1.46%",
+    "s11_vdb_strict":  "严格·≥100亿·破昨高+距≤6+缩≤0.55+pull2-4",
     "s8_stock":        "全量1080笔·38.3%胜·+0.11%/笔",
     "s9_stock":        "全量7591笔·37.6%胜·-0.14%/笔；入口已暂停",
     "s10_stock":       "日线·顶分型卖·总46.1%·+0.90%/笔·首中枢+1.03%",
@@ -81,6 +103,8 @@ GRADE_BACKTEST_NOTE = {
     "s6_stock":        "全量4346笔：A无样本 · B 40.6%(2522)/-0.10% · C 38.1%(1380)/-0.18% · D 36.0%(444)/-0.47%",
     "s6_etf":          "ETF版评级尚未完成多年分层验证",
     "s7_stock":        "全量3813笔：A 58.2%(1044)/+1.61% · B 52.4%(2469)/+0.88% · C 43.7%(300)/-0.06%；已按回测把原A/C对调",
+    "s11_vdb":         "收紧后1970笔：A 48.9%(221)/+2.08% · B 47.2%(1304)/+1.43% · C 44.7%(445)/+1.26%；A>B>C",
+    "s11_vdb_strict":  "严格共用s11评级权重；入场另要求破昨高/距≤6/缩≤0.55",
     "s8_stock":        "全量1080笔：A 38.1%(21，极薄)/+1.15% · B 39.3%(516)/+0.28% · C 37.4%(543)/-0.10%",
     "s9_stock":        "全量7591笔：A 33.9%(3456)/-0.11% · B 40.7%(3129)/-0.15% · C 40.6%(1006)/-0.23%；均值弱排序、胜率反序",
     "s10_stock":       "三买有效口径1229笔·46.1%胜·+0.90%；市场联合A仅作上涨环境加分",
@@ -95,6 +119,8 @@ CONCLUSION_NOTE = {
     "s6_stock":        "上涨/震荡/下跌均无优势，六年总体负期望，dashboard入口已暂停。",
     "s6_etf":          "ETF压缩蓄势未进入主排名，仅保留观察。",
     "s7_stock":        "L2跌破止损；浮盈达到6%后收盘跌破MA5止盈。胜率最高但2023/2026仍为负，优先看A档和市场环境。",
+    "s11_vdb":         "观察池已收紧；评级已校正为A>B>C，优先看A（缩量≤0.45且综合分高）。",
+    "s11_vdb_strict":  "主看版：总市值≥100亿；要阳线破昨高，勿深跌硬抄、勿嵌套二段追。",
     "s8_stock":        "弱观察：上涨环境才看，样本A仅21笔，不进主策略。",
     "s9_stock":        "三种市场状态均为负且A胜率最低，dashboard入口已暂停。",
     "s10_stock":       "策略5的严格缠论补充：只在上涨环境看联合A，非上涨环境优先策略5 ETF宽松。",
@@ -207,6 +233,9 @@ def _levels(strategy, hit):
     if strategy == "chan_final":
         return {"中枢上沿ZG": hit.get("zg"), "中枢下沿ZD": hit.get("zd"),
                 "三买低": hit.get("buy_low"), "止损": hit.get("stop")}
+    if strategy == "vdb_pullback":
+        return {"VDB低(止损)": hit.get("stop"), "VDB高": hit.get("vdb_high"),
+                "回踩低": hit.get("buy_low")}
     return {}
 
 
@@ -316,14 +345,24 @@ def load_payload():
             payload = None
     if payload is None:
         payload = empty_payload()
-    payload["sections"] = [
-        section for section in payload.get("sections", [])
-        if section.get("key") in VKEYS
-    ]
-    for s in payload.get("sections", []):  # 老缓存也补上回测胜率注解
+    # 丢掉已下线变体, 并补齐新增 VKEYS(否则新策略永远不出现在 tabs)
+    bykey = {s["key"]: s for s in payload.get("sections", []) if s.get("key") in VKEYS}
+    sections = []
+    for key in VKEYS:
+        if key in bykey:
+            sections.append(bykey[key])
+        else:
+            sections.append({
+                "key": key, "strategy": "", "title": VARIANTS[key][1],
+                "is_etf": "etf" in key, "count": 0, "hits": [], "error": None,
+            })
+    payload["sections"] = sections
+    for s in payload["sections"]:
         s["btNote"] = BACKTEST_NOTE.get(s["key"], "")
         s["gradeBtNote"] = GRADE_BACKTEST_NOTE.get(s["key"], "评级分层未回测")
         s["conclusionNote"] = CONCLUSION_NOTE.get(s["key"], "")
+        if not s.get("title"):
+            s["title"] = VARIANTS[s["key"]][1]
     return payload
 
 
