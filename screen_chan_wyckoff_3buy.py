@@ -28,6 +28,10 @@ STRICT_BUY = os.environ.get("STRICT_BUY", "1") != "0"
 RUNUP_LOOKBACK = int(os.environ.get("RUNUP_LOOKBACK", "60"))
 MAX_RUNUP = float(os.environ.get("MAX_RUNUP", "0.60"))  # 硬顶: 前期涨幅超过即明显晚期中枢, 剔除
 FIRST_PIVOT_RUNUP = float(os.environ.get("FIRST_PIVOT_RUNUP", "0.25"))  # 第一个中枢的前期涨幅上限
+# 盯盘调优过滤(默认放宽=不过滤; 个股严格由 watch_export 注入)
+S5_MAX_DIST = float(os.environ.get("S5_MAX_DIST", "99"))
+S5_MAX_SHRINK = float(os.environ.get("S5_MAX_SHRINK", "99"))
+S5_MAX_RISK = float(os.environ.get("S5_MAX_RISK", "99"))  # 现价距三买低(止损)%
 UA = "Mozilla/5.0"
 
 
@@ -235,6 +239,12 @@ def check(code, name, rows):
             if not (rebound and reclaimed):
                 continue
 
+        dist = (C[i] / upper - 1) * 100
+        vol_shrink = avg(V[sos + 1 : i + 1]) / V[sos] if V[sos] else 1.0
+        risk = (C[i] / pull_low - 1) * 100 if pull_low > 0 else 99.0
+        if dist > S5_MAX_DIST or vol_shrink > S5_MAX_SHRINK or risk > S5_MAX_RISK:
+            continue
+
         return {
             "code": code,
             "name": name,
@@ -242,12 +252,13 @@ def check(code, name, rows):
             "chg": round((C[i] / C[i - 1] - 1) * 100, 2),
             "box": f"{box['lo']:.2f}-{box['hi']:.2f}",
             "upper": round(upper, 2),
-            "dist": round((C[i] / upper - 1) * 100, 1),
+            "dist": round(dist, 1),
             "sos_date": D[sos][5:],
             "pull_days": pull_days,
-            "vol_shrink": round(avg(V[sos + 1 : i + 1]) / V[sos], 2),
+            "vol_shrink": round(vol_shrink, 2),
             "wbias10": round(weekly["wbias10"], 1),
             "buy_low": round(pull_low, 2),
+            "risk": round(risk, 1),
             "amt": round(A[i] / 1e8, 1),
             "runup": round(stage["runup"] * 100, 1),
             "stage": stage["stage"],

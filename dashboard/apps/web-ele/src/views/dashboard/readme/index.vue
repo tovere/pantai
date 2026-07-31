@@ -40,11 +40,11 @@ const strategies: StrategyRow[] = [
     rank: 3,
     name: '策略10 个股',
     type: '策略5补充',
-    sample: 317,
-    totalWin: '53.6%',
+    sample: 207,
+    totalWin: '54.1%',
     avgRet: '+2.05%',
-    environment: '仅上涨市；首中枢+lag≤2+risk≤8%',
-    verdict: '已调优：非上涨市不展示，优先策略5 ETF',
+    environment: '仅上涨市；首中枢+lag≤2+risk≤6%',
+    verdict: '总胜/均值均优于原46.1%/+0.90%；ABC胜率A>B>C',
     state: 'conditional',
   },
   {
@@ -94,13 +94,13 @@ const strategies: StrategyRow[] = [
   {
     rank: 8,
     name: '策略5 个股严格',
-    type: '观察',
-    sample: 3951,
-    totalWin: '37.2%',
-    avgRet: '接近0',
-    environment: '市场状态差异不明显',
-    verdict: '没法进入推荐榜；ABC只表示形态完整度',
-    state: 'weak',
+    type: '条件',
+    sample: 421,
+    totalWin: '49.6%',
+    avgRet: '+1.37%',
+    environment: '上涨环境 + 距≤6/缩≤0.60/risk≤5',
+    verdict: '已调优放宽样本；ABC胜率A53.7/B48.7/C44.4，优于原40.9%/+0.74%',
+    state: 'conditional',
   },
   {
     rank: 9,
@@ -237,19 +237,19 @@ function getStateType(state: StrategyState) {
     <section class="section-block focus-note">
       <div class="section-head">
         <div>
-          <h2>为什么策略5个股没有上榜</h2>
-          <p>它不是没有样本，而是样本足够后仍没有拉开差异。</p>
+          <h2>策略5个股严格·调优口径</h2>
+          <p>一年严格全量约1161笔；过紧会掉到两百笔以下，现放到四百出头兼顾样本与胜率。</p>
         </div>
       </div>
       <div class="focus-grid">
-        <div><span>全量样本</span><strong>3951笔</strong></div>
-        <div><span>上涨环境</span><strong>+0.07%</strong></div>
-        <div><span>震荡环境</span><strong>+0.01%</strong></div>
-        <div><span>下跌环境</span><strong>+0.10%</strong></div>
+        <div><span>原严格全量</span><strong>1161笔 / 40.9% / +0.74%</strong></div>
+        <div><span>调优池</span><strong>421笔 / 49.6% / +1.37%</strong></div>
+        <div><span>A档</span><strong>134笔 / 53.7% / +2.15%</strong></div>
+        <div><span>B/C档</span><strong>48.7% / 44.4%</strong></div>
       </div>
       <p>
-        三种状态都接近零期望，且滚动年度ABC经常反转。因此策略5个股可以继续提供结构候选，但不能与策略5
-        ETF宽松或上涨环境中的策略10个股并列为实盘优先策略。
+        过滤条件：距上沿≤6%、缩量比≤0.60、止损距≤5%、且仅上涨市出手（非上涨市标D观察）。
+        ABC按胜率标定：贴上沿(距≤3%)为A，其余缩量≤0.55为B。仍弱于策略5 ETF宽松与策略10调优池的主推荐优先级。
       </p>
     </section>
 
