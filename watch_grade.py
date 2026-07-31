@@ -451,8 +451,8 @@ def grade_vdb_pullback(hit, bars):
 def grade_chan_final(hit, bars):
     """策略十(严格笔中枢·缠论三买)评级。
 
-    个股: 在调优池(首中枢+lag≤2+risk≤6+上涨市)内按胜率标定 ABC:
-      lag==2 → A(62.1%/+2.42%); risk>4 → B; 其余 C。旧联合模型排期望不排胜率, 个股停用。
+    个股: 在调优池(首中枢+lag≤2+risk≤10+上涨市)内按胜率标定 ABC:
+      lag==2 → A; risk>4 → B; 其余 C。旧联合模型排期望不排胜率, 个股停用。
     ETF: 仍用结构分 + 第2中枢直接 D。
     """
     flags, score = [], 0
@@ -484,10 +484,10 @@ def grade_chan_final(hit, bars):
         flags.append({"text": f"止损近(-{risk:.1f}%)", "type": "warn" if not is_etf else "good"})
         if is_etf:
             score += 1
-    elif 4 < risk <= 6:
+    elif 4 < risk <= 10:
         score += 1
         flags.append({"text": f"止损距适中(-{risk:.1f}%)", "type": "good"})
-    elif risk > 8:
+    elif risk > 10:
         score -= 1
         flags.append({"text": f"止损偏远(-{risk:.1f}%)", "type": "warn"})
 
