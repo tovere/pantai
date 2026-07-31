@@ -77,7 +77,7 @@ def _decide(score, flags, exclude=False):
 def grade_three_buy(hit, bars):
     """策略五(缠论/威科夫三买)评级。
 
-    个股: 调优池内按胜率标定 ABC —— dist≤3→A; 否则 shrink≤0.55→B; 其余 C。
+    个股: 严格/宽松调优池共用胜率标定 —— dist≤3.5且缩≤0.45→A; dist≤4→B; 其余 C。
     ETF: 仍用结构完整度打分(形态分, 不保证胜率单调)。
     """
     flags, score = [], 0
@@ -109,7 +109,7 @@ def grade_three_buy(hit, bars):
         flags.append({"text": "贴上沿", "type": "good"})
     elif dist <= 8:
         score += 1
-        if not is_etf and dist <= 3:
+        if not is_etf and dist <= 3.5:
             flags.append({"text": f"贴上沿区(+{dist:.1f}%)", "type": "good"})
     elif dist >= DIST_CHASE:
         score -= 2
@@ -124,7 +124,7 @@ def grade_three_buy(hit, bars):
         flags.append({"text": f"回踩偏久({pull}天磨顶)", "type": "warn"})
 
     # 缩量质量
-    if shrink and shrink <= (0.55 if not is_etf else SHRINK_CLEAN):
+    if shrink and shrink <= (0.45 if not is_etf else SHRINK_CLEAN):
         score += 1
         flags.append({"text": "缩量干净", "type": "good"})
     elif shrink >= SHRINK_LOOSE:
@@ -154,11 +154,10 @@ def grade_three_buy(hit, bars):
         grade = _decide(score, flags)
     elif has_bad:
         grade = "B" if score >= 1 else "C"
-    elif dist <= 3:
-        # 调优池(距≤6+缩≤0.60+risk≤5+上涨市)内 dist≤3: 53.7%胜/+2.15%
+    elif dist <= 3.5 and shrink and shrink <= 0.45:
         grade = "A"
         score = max(score, 3)
-    elif shrink and shrink <= 0.55:
+    elif dist <= 4:
         grade = "B"
         score = max(score, 1)
     else:
@@ -174,14 +173,14 @@ def _note_three_buy(grade, flags, is_etf=False):
     if grade == "A":
         if is_etf:
             return "干净回踩+转强, 接近下单级别: " + "、".join(good)
-        return "贴上沿回踩, 下单级别: " + ("、".join(good) if good else "距上沿≤3%")
+        return "贴上沿+缩量干净, 下单级别: " + ("、".join(good) if good else "距≤3.5%且缩≤0.45")
     if grade == "D":
         return bad[0] if bad else "晚期中枢剔除"
     if bad:
         return "结构命中但盘口减分: " + "、".join(bad) + " —— 观察不追"
     if grade == "B":
-        return "候选, 缩量尚可" if not is_etf else "候选, 位置尚可但未到下单级别"
-    return "偏弱, 离上沿偏远或缩量一般" if not is_etf else "偏弱, 位置/量价一般"
+        return "候选, 距上沿尚可" if not is_etf else "候选, 位置尚可但未到下单级别"
+    return "偏弱, 离上沿偏远" if not is_etf else "偏弱, 位置/量价一般"
 
 
 def grade_squeeze(hit, bars):

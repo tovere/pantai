@@ -99,11 +99,22 @@ const strategies: StrategyRow[] = [
     totalWin: '49.6%',
     avgRet: '+1.37%',
     environment: '上涨环境 + 距≤6/缩≤0.60/risk≤5',
-    verdict: '已调优放宽样本；ABC胜率A53.7/B48.7/C44.4，优于原40.9%/+0.74%',
+    verdict: '已调优放宽样本；ABC胜率A58.0/B49.7/C45.4，优于原40.9%/+0.74%',
     state: 'conditional',
   },
   {
     rank: 9,
+    name: '策略5 个股宽松',
+    type: '条件',
+    sample: 959,
+    totalWin: '49.4%',
+    avgRet: '+1.51%',
+    environment: '上涨市；首中枢+距≤5/缩≤0.50/risk≤4/pull≥2',
+    verdict: '宽松结构已调优；ABC与严格共用标定A52.2/B46.9/C45.7',
+    state: 'conditional',
+  },
+  {
+    rank: 10,
     name: '策略6 个股/ETF',
     type: '关闭',
     sample: 4346,
@@ -114,7 +125,7 @@ const strategies: StrategyRow[] = [
     state: 'paused',
   },
   {
-    rank: 10,
+    rank: 11,
     name: '策略9 个股',
     type: '关闭',
     sample: 7591,
@@ -237,19 +248,18 @@ function getStateType(state: StrategyState) {
     <section class="section-block focus-note">
       <div class="section-head">
         <div>
-          <h2>策略5个股严格·调优口径</h2>
-          <p>一年严格全量约1161笔；过紧会掉到两百笔以下，现放到四百出头兼顾样本与胜率。</p>
+          <h2>策略5个股·调优口径</h2>
+          <p>严格与宽松均已调优；结构门槛不同，过滤思路一致（贴上沿/缩量/止损近/上涨市）。</p>
         </div>
       </div>
       <div class="focus-grid">
-        <div><span>原严格全量</span><strong>1161笔 / 40.9% / +0.74%</strong></div>
-        <div><span>调优池</span><strong>421笔 / 49.6% / +1.37%</strong></div>
-        <div><span>A档</span><strong>134笔 / 53.7% / +2.15%</strong></div>
-        <div><span>B/C档</span><strong>48.7% / 44.4%</strong></div>
+        <div><span>严格调优</span><strong>421笔 / 49.6% / +1.37%</strong></div>
+        <div><span>宽松调优</span><strong>959笔 / 49.4% / +1.51%</strong></div>
+        <div><span>严格A档</span><strong>58.0% / +2.10%</strong></div>
+        <div><span>宽松A档</span><strong>52.2% / +1.97%</strong></div>
       </div>
       <p>
-        过滤条件：距上沿≤6%、缩量比≤0.60、止损距≤5%、且仅上涨市出手（非上涨市标D观察）。
-        ABC按胜率标定：贴上沿(距≤3%)为A，其余缩量≤0.55为B。仍弱于策略5 ETF宽松与策略10调优池的主推荐优先级。
+        共用ABC标定：距≤3.5%且缩≤0.45为A，距≤4%为B。ETF主线仍看策略5 ETF宽松。
       </p>
     </section>
 

@@ -28,10 +28,12 @@ STRICT_BUY = os.environ.get("STRICT_BUY", "1") != "0"
 RUNUP_LOOKBACK = int(os.environ.get("RUNUP_LOOKBACK", "60"))
 MAX_RUNUP = float(os.environ.get("MAX_RUNUP", "0.60"))  # 硬顶: 前期涨幅超过即明显晚期中枢, 剔除
 FIRST_PIVOT_RUNUP = float(os.environ.get("FIRST_PIVOT_RUNUP", "0.25"))  # 第一个中枢的前期涨幅上限
-# 盯盘调优过滤(默认放宽=不过滤; 个股严格由 watch_export 注入)
+# 盯盘调优过滤(默认放宽=不过滤; 个股严格/宽松由 watch_export 注入)
 S5_MAX_DIST = float(os.environ.get("S5_MAX_DIST", "99"))
 S5_MAX_SHRINK = float(os.environ.get("S5_MAX_SHRINK", "99"))
 S5_MAX_RISK = float(os.environ.get("S5_MAX_RISK", "99"))  # 现价距三买低(止损)%
+S5_MIN_PULL = int(os.environ.get("S5_MIN_PULL", "0"))
+S5_STAGE1_ONLY = os.environ.get("S5_STAGE1_ONLY", "0") != "0"
 UA = "Mozilla/5.0"
 
 
@@ -200,6 +202,8 @@ def check(code, name, rows):
             continue
         if STRICT_BUY and stage["stage"] != 1:
             continue
+        if S5_STAGE1_ONLY and stage["stage"] != 1:
+            continue
         upper, lower, mid = box["hi"], box["lo"], box["mid"]
         vbase = avg(V[max(0, sos - 20) : sos])
         sos_break = C[sos] > upper * 1.015 and H[sos] > upper * 1.025
@@ -242,6 +246,8 @@ def check(code, name, rows):
         dist = (C[i] / upper - 1) * 100
         vol_shrink = avg(V[sos + 1 : i + 1]) / V[sos] if V[sos] else 1.0
         risk = (C[i] / pull_low - 1) * 100 if pull_low > 0 else 99.0
+        if pull_days < S5_MIN_PULL:
+            continue
         if dist > S5_MAX_DIST or vol_shrink > S5_MAX_SHRINK or risk > S5_MAX_RISK:
             continue
 
