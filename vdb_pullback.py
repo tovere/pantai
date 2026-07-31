@@ -8,10 +8,10 @@
   - 止损 = 该 VDB 低点
   - 嵌套: 用「最近仍有效的 VDB」作锚; 但回测显示 chain≥1 无优势, 严格版剔除
 
-分层结论(2025-07~2026-07):
-  - 阴线入场 / 深跌反转 / 贴死 VDB 低 / 嵌套 → 更差
-  - 阳线 + 收盘破昨高 + 缩量干净 + 回踩3-6天 + 距低甜区 → 更好
-  - 宽松: 阳+chain0+缩≤0.60+距≤8+pull≤6; 严格再收紧破昨高/缩/距/天
+分层结论(2025-07~2026-07, ≥200亿收紧池再调优):
+  - 阴线入场 / 深跌反转 / 嵌套 → 更差; 「破昨高」在收紧池内不抬胜率
+  - 缩≤0.50 + 距≤6 + ret20≥0 + 剔反转 → ~703笔 54.1%/+2.23%(原1970笔46.9%/+1.46%)
+  - ABC: 距≤4→A, 缩≤0.45→B
 """
 import os
 
@@ -23,24 +23,28 @@ CLOSE_POS = float(os.environ.get("VDB_CLOSE_POS", "0.55"))
 BODY_RATIO = float(os.environ.get("VDB_BODY", "0.45"))
 PULL_MIN = int(os.environ.get("VDB_PULL_MIN", "2"))
 PULL_MAX = int(os.environ.get("VDB_PULL_MAX", "8"))
-SHRINK = float(os.environ.get("VDB_SHRINK", "0.60"))  # 宽松缩量上限(原0.70偏松)
+SHRINK = float(os.environ.get("VDB_SHRINK", "0.50"))
 STOP_TOL = float(os.environ.get("VDB_STOP_TOL", "0.005"))
 ENTRY_CLOSE_POS = float(os.environ.get("VDB_ENTRY_POS", "0.45"))
 # 总市值下限(元)。默认 100 亿=1e10; 设 0 关闭。盯盘: 宽松 200亿 / 严格 100亿
 MIN_MKTCAP = float(os.environ.get("MIN_MKTCAP", "10000000000"))
-# 宽松额外收紧(仍宽于严格): 距低上限 / 回踩天数上限
-LOOSE_DIST = float(os.environ.get("VDB_LOOSE_DIST", "8.0"))
+# 宽松额外收紧: 距低上限 / 回踩天数上限
+LOOSE_DIST = float(os.environ.get("VDB_LOOSE_DIST", "6.0"))
 LOOSE_PULL_MAX = int(os.environ.get("VDB_LOOSE_PULL_MAX", "6"))
-# 严格版: 分层最优组合附近(阳+破昨高+缩量+回踩天数+距低上限+不要嵌套)
+# 严格版: 更干净缩量+短回踩; 默认不再强制破昨高(回测不抬胜率)
 STRICT_BUY = os.environ.get("STRICT_BUY", "0") != "0"
-STRICT_SHRINK = float(os.environ.get("VDB_STRICT_SHRINK", "0.55"))
+STRICT_SHRINK = float(os.environ.get("VDB_STRICT_SHRINK", "0.45"))
 STRICT_DIST = float(os.environ.get("VDB_STRICT_DIST", "6.0"))
 STRICT_PULL_MIN = int(os.environ.get("VDB_STRICT_PULL_MIN", "2"))
 STRICT_PULL_MAX = int(os.environ.get("VDB_STRICT_PULL_MAX", "4"))
-# 可选偏反转(回测显示偏弱, 默认关; 仅作研究开关)
+REQUIRE_RECLAIM = os.environ.get("VDB_REQUIRE_RECLAIM", "0") != "0"
+# 可选偏反转(回测显示偏弱, 默认关); EXCLUDE_REV=1 则剔除深跌/低位背景
 REQUIRE_REVERSAL = os.environ.get("VDB_REVERSAL", "0") != "0"
+EXCLUDE_REVERSAL = os.environ.get("VDB_EXCLUDE_REV", "0") != "0"
 OVERSOLD_20 = float(os.environ.get("VDB_OVERSOLD_20", "-0.08"))
 OVERSOLD_BIAS = float(os.environ.get("VDB_OVERSOLD_BIAS", "-0.05"))
+# 近20日涨幅下限(%, 如 0=要求 ret20≥0); 默认 -99 不过滤
+MIN_RET20 = float(os.environ.get("VDB_MIN_RET20", "-99"))
 
 _MKTCAP_CACHE = None
 
@@ -131,16 +135,22 @@ def signal_at(code, name, rows, i, today_only=False):
     einfo = _bar(O, H, L, C, V, i)
     if not einfo or einfo["close_pos"] < ENTRY_CLOSE_POS:
         return None
-    # 阴线入场回测转负 → 宽松/严格都不要阴线; 严格额外要求破昨高
+    # 阴线入场回测转负 → 宽松/严格都不要阴线
     if C[i] <= O[i]:
         return None
-    if STRICT_BUY and not (C[i] > H[i - 1]):
+    # 破昨高仅当显式打开 VDB_REQUIRE_RECLAIM=1(默认关; 收紧池内不抬胜率)
+    if REQUIRE_RECLAIM and not (C[i] > H[i - 1]):
         return None
 
     ma60 = avg(C[i - 59 : i + 1])
     ret20 = C[i] / C[i - 20] - 1 if C[i - 20] > 0 else 0.0
     bias60 = C[i] / ma60 - 1 if ma60 > 0 else 0.0
-    if REQUIRE_REVERSAL and ret20 > OVERSOLD_20 and bias60 > OVERSOLD_BIAS:
+    if ret20 * 100 < MIN_RET20:
+        return None
+    is_rev = ret20 <= OVERSOLD_20 or bias60 <= OVERSOLD_BIAS
+    if REQUIRE_REVERSAL and not is_rev:
+        return None
+    if EXCLUDE_REVERSAL and is_rev:
         return None
 
     pull_lo = STRICT_PULL_MIN if STRICT_BUY else PULL_MIN
@@ -196,7 +206,7 @@ def signal_at(code, name, rows, i, today_only=False):
             "bias60": round(bias60 * 100, 1),
             "amt": round(A[i] / 1e8, 1),
             "mktcap": round(mktcap / 1e8, 1) if mktcap else None,  # 亿
-            "reversal": int(ret20 <= OVERSOLD_20 or bias60 <= OVERSOLD_BIAS),
+            "reversal": int(is_rev),
             "yang": 1,
             "reclaim": int(C[i] > H[i - 1]),
         }

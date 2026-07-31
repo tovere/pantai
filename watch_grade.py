@@ -345,11 +345,10 @@ def grade_nzi(hit, bars):
 
 
 def grade_vdb_pullback(hit, bars):
-    """策略十一评级(仅本策略): 在计划权重基础上按 ≥200亿收紧池网格微调阈值/权重,
-    验收胜率+均值 A>B>C。
+    """策略十一评级。
 
-    加分: 破昨高、未贴死、缩量≤0.45/0.55、距低4-10%、回踩3-6天、ret20强、额≥5亿。
-    减分: 贴死、距≤4%、回踩2天、深跌背景、冲高回落、阴线。
+    调优池(≥200亿·缩≤0.50+距≤6+ret20≥0+剔反转)内按胜率标定:
+      dist≤4 → A(55.4%/+2.45%); shrink≤0.45 → B; 其余 C。
     """
     flags, score = [], 0
     dist = _f(hit.get("dist_vdb"))
@@ -369,32 +368,30 @@ def grade_vdb_pullback(hit, bars):
         flags.append({"text": "阴线入场", "type": "bad"})
 
     if reclaim:
-        score += 1
         flags.append({"text": "收盘破昨高", "type": "good"})
 
     if not touch:
         score += 1
         flags.append({"text": "回踩未贴死", "type": "good"})
     else:
-        score -= 1
         flags.append({"text": "回踩贴死VDB低", "type": "warn"})
 
     if shrink and shrink <= 0.45:
         score += 2
         flags.append({"text": "缩量很干净", "type": "good"})
-    elif shrink and shrink <= 0.55:
+    elif shrink and shrink <= 0.50:
         score += 1
         flags.append({"text": "缩量干净", "type": "good"})
     elif shrink >= 0.70:
         score -= 1
         flags.append({"text": f"缩量不足({shrink:.2f})", "type": "warn"})
 
-    if 4 <= dist <= 10:
+    if dist <= 4:
+        score += 2
+        flags.append({"text": f"距低近(+{dist:.0f}%)·胜率甜区", "type": "good"})
+    elif dist <= 6:
         score += 1
-        flags.append({"text": f"距低甜区(+{dist:.0f}%)", "type": "good"})
-    elif dist <= 4:
-        score -= 1
-        flags.append({"text": f"贴死易洗(+{dist:.0f}%)", "type": "warn"})
+        flags.append({"text": f"距低适中(+{dist:.0f}%)", "type": "good"})
     elif dist >= 12:
         score -= 2
         flags.append({"text": f"离VDB低远(+{dist:.0f}%)", "type": "warn"})
@@ -403,7 +400,7 @@ def grade_vdb_pullback(hit, bars):
         score += 1
         flags.append({"text": f"回踩{pull}天", "type": "good"})
     elif pull == 2:
-        score -= 1
+        flags.append({"text": "回踩仅2天", "type": "warn"})
 
     if chain >= 1:
         score -= 2
@@ -413,9 +410,10 @@ def grade_vdb_pullback(hit, bars):
         score -= 1
         flags.append({"text": "深跌/低位背景偏弱", "type": "warn"})
 
+    if ret20 >= 0:
+        flags.append({"text": "近20日非弱", "type": "good"})
     if ret20 > 10:
         score += 1
-        flags.append({"text": "近20日偏强", "type": "good"})
 
     if amt >= 5:
         score += 1
@@ -424,27 +422,28 @@ def grade_vdb_pullback(hit, bars):
         score -= 2
         flags.append({"text": "冲高回落", "type": "bad"})
 
-    # 网格验收阈值: A = score≥4 且缩量≤0.45; B≥1; 其余 C; bad 最高 B
     has_bad = any(f["type"] == "bad" for f in flags)
     if has_bad:
         grade = "B" if score >= 1 else "C"
-    elif score >= 4 and shrink and shrink <= 0.45:
+    elif dist <= 4:
         grade = "A"
-    elif score >= 1:
+        score = max(score, 3)
+    elif shrink and shrink <= 0.45:
         grade = "B"
+        score = max(score, 1)
     else:
         grade = "C"
 
     if grade == "A":
-        note = "VDB回踩转强, 接近下单: " + "、".join(
+        note = "距VDB低近, 下单级别: " + "、".join(
             f["text"] for f in flags if f["type"] == "good"
         )
     elif has_bad:
         note = "命中但盘口减分 —— 观察不追"
     elif grade == "B":
-        note = "VDB回踩候选, 破昨高/缩量一般"
+        note = "VDB回踩候选, 缩量干净但距低一般"
     else:
-        note = "偏弱: 贴死洗盘、追高或深跌背景"
+        note = "偏弱: 距低偏远或缩量一般"
     return {"grade": grade, "score": score, "flags": flags, "note": note}
 
 
