@@ -21,6 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import watch_export
+import paper_agent
 import watch_export_30f
 
 PORT = int(os.environ.get("PORT", "5320"))
@@ -77,6 +78,8 @@ def _run_variant(key):
 def _run_all():
     for key in watch_export.VKEYS:
         _run_variant(key)
+    if all(JOBS.get(key, {}).get("status") == "done" and not JOBS.get(key, {}).get("error") for key in watch_export.VKEYS):
+        paper_agent.capture(watch_export.load_payload())
 
 
 def _run_cache_update(fast=False):
@@ -200,6 +203,8 @@ class Handler(BaseHTTPRequestHandler):
         p, q = self._path_query()
         if p in ("/watch/data", "/watch"):
             self._send(watch_export.load_payload())
+        elif p == "/paper/summary":
+            self._send(paper_agent.summary())
         elif p == "/jobs":
             with _jlock:
                 self._send(list(JOBS.values()))
@@ -232,7 +237,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         p, q = self._path_query()
         self._read_body()
-        if p == "/watch/run":
+        if p == "/paper/run":
+            _spawn(paper_agent.run)
+            self._send({"started": "paper"})
+        elif p == "/watch/run":
             key = (q.get("key") or ["all"])[0]
             if key == "all":
                 _spawn(_run_all)
@@ -271,6 +279,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    _spawn(paper_agent.daily_loop)
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"[watch_server] 盯盘后端 http://127.0.0.1:{PORT}")
     try:

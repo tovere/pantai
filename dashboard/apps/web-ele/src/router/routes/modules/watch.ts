@@ -11,6 +11,12 @@ const routes: RouteRecordRaw[] = [
     path: '/watch',
     children: [
       {
+        name: 'WatchPaper',
+        path: '/watch/paper',
+        component: () => import('#/views/dashboard/paper/index.vue'),
+        meta: { icon: 'lucide:bot', title: 'Agent 模拟盘' },
+      },
+      {
         name: 'WatchBoard',
         path: '/watch/board',
         component: () => import('#/views/dashboard/watch/index.vue'),

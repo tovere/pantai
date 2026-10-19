@@ -5,7 +5,11 @@
  * @param {config} 配置项
  * @returns {Obj} 赋值后的对象
  */
-export function assignParentValuesToChild(parent, child, config = {}) {
+export function assignParentValuesToChild(
+  parent: Record<string, unknown>,
+  child: Record<string, unknown>,
+  config: Record<string, string> = {},
+) {
   for (const key in child) {
     // 检查子级对象是否包含该属性
     if (child.hasOwnProperty(key)) {
