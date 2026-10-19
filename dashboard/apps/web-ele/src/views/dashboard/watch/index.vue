@@ -7,6 +7,7 @@ import { ElMessage } from 'element-plus';
 
 import { getJobsApi, getWatchDataApi, runVariantApi } from '#/api/watch';
 
+import CandidatePool from '../_shared/CandidatePool.vue';
 import HitTable from './HitTable.vue';
 
 const data = ref<WatchData | null>(null);
@@ -14,7 +15,12 @@ const jobs = ref<Record<string, WatchJob>>({});
 const loading = ref(false);
 const activeTab = ref('');
 
-let timer: any = null;
+let timer: ReturnType<typeof setTimeout> | undefined;
+let disposed = false;
+let polling = false;
+const submitting = ref(false);
+const refreshError = ref('');
+const refreshedAt = ref('');
 // 我主动发起、等待刷新的任务 key。用于捕捉 0.1s 秒退的 ETF —— 这类任务
 // 完成得比一次轮询(1200ms)还快，仅靠"目击 running→done"会漏刷新。
 const pending = new Set<string>();
@@ -24,19 +30,19 @@ const cards = computed(() => {
   return [
     {
       label: '今日命中',
-      value: s?.total ?? 0,
+      value: s?.total ?? '—',
       hint: '全部策略去重前',
       color: '',
     },
     {
-      label: 'A 下单级别',
-      value: s?.gradeA ?? 0,
+      label: 'A 级候选',
+      value: s?.gradeA ?? '—',
       hint: '干净回踩+转强',
       color: 'a',
     },
     {
       label: 'B 候选',
-      value: s?.gradeB ?? 0,
+      value: s?.gradeB ?? '—',
       hint: '位置尚可待观察',
       color: 'b',
     },
@@ -44,7 +50,7 @@ const cards = computed(() => {
 });
 
 const anyRunning = computed(() =>
-  Object.values(jobs.value).some((j) => j.status === 'running'),
+  submitting.value || Object.values(jobs.value).some((j) => j.status === 'running'),
 );
 
 function jobOf(key: string): undefined | WatchJob {
@@ -54,15 +60,20 @@ function jobOf(key: string): undefined | WatchJob {
 async function load() {
   try {
     data.value = await getWatchDataApi();
+    refreshError.value = '';
+    refreshedAt.value = new Date().toLocaleTimeString('zh-CN');
     if (!activeTab.value && data.value?.sections.length) {
       activeTab.value = data.value.sections[0]!.key;
     }
   } catch {
-    ElMessage.error('取数据失败，确认 watch_server.py 是否已启动(:5320)');
+    refreshError.value = '数据刷新失败，当前保留上次成功结果';
   }
 }
 
 async function pollJobs() {
+  if (disposed || polling) return;
+  clearTimeout(timer);
+  polling = true;
   try {
     const list = await getJobsApi();
     const next: Record<string, WatchJob> = {};
@@ -82,25 +93,31 @@ async function pollJobs() {
     jobs.value = next;
     if (finished) await load(); // 有任务刚跑完 → 刷新数据
   } catch {
-    // 后端未起时静默
+    refreshError.value = '任务连接异常，当前结果可能不是最新数据';
   }
   const running = Object.values(jobs.value).some((j) => j.status === 'running');
-  timer = setTimeout(pollJobs, running ? 1200 : 4000);
+  polling = false;
+  if (!disposed) timer = setTimeout(pollJobs, document.hidden ? 30000 : running ? 1200 : 4000);
 }
 
-async function runOne(key: string) {
-  pending.add(key);
-  await runVariantApi(key);
-  ElMessage.info('已开始，进度见下方');
-  await pollJobs();
+async function submit(key: string) {
+  if (anyRunning.value) return;
+  submitting.value = true;
+  const keys = key === 'all' ? (data.value?.sections ?? []).map((s) => s.key) : [key];
+  try {
+    await runVariantApi(key);
+    keys.forEach((item) => pending.add(item));
+    ElMessage.info('任务已提交');
+    await pollJobs();
+  } catch {
+    keys.forEach((item) => pending.delete(item));
+    ElMessage.error('提交失败，请重试');
+  } finally {
+    submitting.value = false;
+  }
 }
-
-async function runAll() {
-  for (const s of data.value?.sections ?? []) pending.add(s.key);
-  await runVariantApi('all');
-  ElMessage.info('已开始全部重跑（顺序执行）');
-  await pollJobs();
-}
+const runOne = (key: string) => submit(key);
+const runAll = () => submit('all');
 
 onMounted(async () => {
   loading.value = true;
@@ -109,7 +126,7 @@ onMounted(async () => {
   loading.value = false;
 });
 
-onUnmounted(() => timer && clearTimeout(timer));
+onUnmounted(() => { disposed = true; clearTimeout(timer); });
 </script>
 
 <template>
@@ -137,6 +154,11 @@ onUnmounted(() => timer && clearTimeout(timer));
       </div>
     </div>
 
+    <el-alert v-if="refreshError" :title="refreshError" type="warning" :closable="false">
+      <el-button size="small" @click="load">重试刷新</el-button>
+    </el-alert>
+    <p v-if="refreshedAt" class="dim">最近成功刷新 {{ refreshedAt }}</p>
+    <CandidatePool v-if="data" :data="data" />
     <!-- 统计卡 -->
     <div class="cards">
       <div v-for="c in cards" :key="c.label" class="card" :class="c.color">
@@ -181,6 +203,7 @@ onUnmounted(() => timer && clearTimeout(timer));
           <div class="strat-bar">
             <el-button
               size="small"
+              :disabled="submitting"
               :loading="jobOf(sec.key)?.status === 'running'"
               @click="runOne(sec.key)"
             >

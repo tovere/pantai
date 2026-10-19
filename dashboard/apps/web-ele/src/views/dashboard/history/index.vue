@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { HistoryDay, HistoryItem } from '#/api/watch';
 
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 import { getHistoryDayApi, getHistoryListApi } from '#/api/watch';
 
@@ -9,14 +9,48 @@ const list = ref<HistoryItem[]>([]);
 const day = ref<HistoryDay | null>(null);
 const activeDate = ref('');
 const activeTab = ref('');
+const compareDate = ref('');
+const baseline = ref<HistoryDay | null>(null);
+const error = ref('');
+let requestId = 0;
+const loading = ref(false);
+const changes = computed(() => {
+  const flatten = (value: HistoryDay | null) => {
+    const map = new Map<string, { code: string; name: string; grade: string }>();
+    for (const section of value?.sections ?? []) for (const hit of section.hits) {
+      if (!hit.code) continue;
+      const previous = map.get(hit.code);
+      if (!previous || (hit.grade ?? 'D') < previous.grade)
+        map.set(hit.code, { code: hit.code, name: hit.name ?? '', grade: hit.grade ?? 'D' });
+    }
+    return map;
+  };
+  const current = flatten(day.value);
+  const prior = flatten(baseline.value);
+  return [...new Set([...current.keys(), ...prior.keys()])].map(code => {
+    const now = current.get(code);
+    const before = prior.get(code);
+    return { code, name: now?.name ?? before?.name, before: before?.grade ?? '—', after: now?.grade ?? '—',
+      change: !before ? '新增' : !now ? '消失' : now.grade < before.grade ? '评级提升' : now.grade > before.grade ? '评级下降' : '连续命中' };
+  });
+});
+async function compare() {
+  const date = compareDate.value;
+  baseline.value = null;
+  if (!date) return;
+  try {
+    const result = await getHistoryDayApi(date);
+    if (date === compareDate.value) baseline.value = result;
+  } catch { error.value = '对比数据加载失败，请重新选择日期'; }
+}
 
-const GRADE_TYPE: Record<string, string> = {
+const GRADE_TYPE: Record<string, 'success' | 'primary' | 'info' | 'danger' | 'warning'> = {
   A: 'success',
   B: 'primary',
   C: 'info',
   D: 'danger',
 };
-const FLAG_TYPE: Record<string, string> = {
+const FLAG_TYPE: Record<string, 'success' | 'primary' | 'info' | 'danger' | 'warning'> = {
   good: 'success',
   warn: 'warning',
   bad: 'danger',
@@ -27,20 +61,43 @@ function chgClass(v?: number) {
 }
 
 async function openDay(date: string) {
-  activeDate.value = date;
-  day.value = await getHistoryDayApi(date);
-  const first = day.value?.sections.find((s) => s.count > 0);
-  activeTab.value = first?.key ?? day.value?.sections[0]?.key ?? '';
+  const id = ++requestId;
+  loading.value = true;
+  error.value = '';
+  try {
+    const result = await getHistoryDayApi(date);
+    if (id !== requestId) return;
+    activeDate.value = date;
+    day.value = result;
+    const first = result.sections.find((s) => s.count > 0);
+    activeTab.value = first?.key ?? result.sections[0]?.key ?? '';
+  } catch { if (id === requestId) error.value = '历史加载失败，请重试'; }
+  finally { if (id === requestId) loading.value = false; }
 }
 
 onMounted(async () => {
-  list.value = await getHistoryListApi();
+  try { list.value = await getHistoryListApi(); } catch { error.value = '日期列表加载失败，请刷新页面'; }
   if (list.value.length) await openDay(list.value[0]!.date);
 });
 </script>
 
 <template>
-  <div class="hist-page">
+  <div class="hist-page" v-loading="loading">
+    <el-alert v-if="error" :title="error" type="error" :closable="false" />
+    <el-card shadow="never" style="margin-bottom: 14px">
+      <span>对比基准日期：</span>
+      <el-select v-model="compareDate" clearable placeholder="选择另一个日期" style="width: 200px" @change="compare">
+        <el-option v-for="item in list" :key="item.date" :value="item.date" :label="item.date" :disabled="item.date === activeDate" />
+      </el-select>
+      <p v-if="baseline">{{ baseline.date }} → {{ activeDate }}（各日期按代码去重、取最高评级）</p>
+      <el-table v-if="baseline" :data="changes" max-height="320">
+        <el-table-column prop="code" label="代码" />
+        <el-table-column prop="name" label="名称" />
+        <el-table-column prop="before" label="基准评级" />
+        <el-table-column prop="after" label="当前评级" />
+        <el-table-column prop="change" label="变化" :filters="['新增','消失','评级提升','评级下降','连续命中'].map(text => ({text, value:text}))" :filter-method="(value, row) => row.change === value" />
+      </el-table>
+    </el-card>
     <div class="layout">
       <!-- 左: 日期列表 -->
       <el-card shadow="never" class="side">
@@ -136,6 +193,7 @@ onMounted(async () => {
 .hist-page {
   padding: 16px 20px;
 }
+@media (max-width: 760px) { .layout { flex-direction: column; } .side { width: 100% !important; } .main { width: 100%; } }
 .layout {
   display: flex;
   gap: 14px;

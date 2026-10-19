@@ -24,7 +24,7 @@ const GRADE_TYPE: Record<WatchHit['grade'], TagType> = {
   D: 'danger',
 };
 const GRADE_LABEL: Record<string, string> = {
-  A: 'A 下单级别',
+  A: 'A 级候选',
   B: 'B 候选',
   C: 'C 偏弱',
   D: 'D 剔除',
@@ -80,12 +80,12 @@ function flagType(type: WatchFlag['type']): TagType {
       </template>
     </el-table-column>
 
-    <el-table-column label="代码" width="76" prop="code" />
-    <el-table-column label="名称" width="92" prop="name" show-overflow-tooltip />
+    <el-table-column fixed="left" label="代码" width="76" prop="code" />
+    <el-table-column fixed="left" label="名称" width="92" prop="name" show-overflow-tooltip />
     <el-table-column label="行业" width="96" prop="industry" show-overflow-tooltip>
       <template #default="{ row }">{{ row.industry || '-' }}</template>
     </el-table-column>
-    <el-table-column label="评级" width="104">
+    <el-table-column fixed="left" label="评级" width="104">
       <template #default="{ row }">
         <el-tag :type="gradeType(row.grade)" effect="dark" size="small">
           {{ GRADE_LABEL[row.grade] }}
@@ -270,7 +270,7 @@ function flagType(type: WatchFlag['type']): TagType {
     <el-table-column label="盘口标签" min-width="240">
       <template #default="{ row }">
         <el-tag
-          v-for="f in row.flags"
+          v-for="f in [...row.flags].sort((a, b) => Number(b.type === 'bad') - Number(a.type === 'bad'))"
           :key="f.text"
           :type="flagType(f.type)"
           size="small"
