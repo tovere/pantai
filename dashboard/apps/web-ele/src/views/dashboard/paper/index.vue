@@ -98,8 +98,8 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
         </el-tab-pane>
       </el-tabs>
       <el-card shadow="never"><h3>每日决策复盘</h3><el-empty v-if="!data.decisions.length" description="尚无决策，等待当日完整收盘快照" />
-        <section v-for="d in data.decisions" :key="d.date"><h4>{{ d.date }} · {{ d.plan.model }}</h4>
-          <template v-if="d.linkage"><h4>连板/联动账户 · 次日条件计划</h4><p>{{ d.linkage.error || d.linkage.plan?.review }}</p>
+        <section v-for="d in data.decisions" :key="d.date"><h4>{{ d.date }} · 第{{ d.revision || 1 }}版 · {{ d.plan.model }}</h4>
+          <p>生成时间：{{ d.generatedAt || '—' }}</p><template v-if="d.linkage"><h4>连板/联动账户 · 次日条件计划</h4><p>{{ d.linkage.error || d.linkage.plan?.review }}</p>
           <el-table :data="d.linkage.plan?.actions || []"><el-table-column prop="code" label="代码" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="reason" label="A/B联动依据" min-width="280" /></el-table></template><p>{{ d.plan.review }}</p>
           <el-table :data="d.plan.actions"><el-table-column prop="code" label="代码" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="reason" label="判断依据与退出条件" min-width="300" /></el-table>
         </section>

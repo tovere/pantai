@@ -294,7 +294,7 @@ def capture(payload):
     temp.replace(SNAPSHOT)
 
 
-def _run_impl(payload=None, decision_fn=None):
+def _run_impl(payload=None, decision_fn=None, force=False):
     if not LOCK.acquire(False):
         return {"skipped": "已有任务运行"}
     STATUS.update(running=True, error=None)
@@ -316,8 +316,23 @@ def _run_impl(payload=None, decision_fn=None):
                     settle(account, day)
             conn.execute("INSERT OR REPLACE INTO state VALUES (1,?)", (json.dumps(state, ensure_ascii=False),))
             conn.commit()
-            if conn.execute("SELECT 1 FROM decisions WHERE date=?", (day,)).fetchone():
+            previous = conn.execute("SELECT body FROM decisions WHERE date=?", (day,)).fetchone()
+            if previous and not force:
                 return {"skipped": "今日已完成"}
+            if previous:
+                for account in state["accounts"].values():
+                    if any(t.get("date") == day for t in account["trades"]):
+                        raise ValueError("今日计划已有执行记录，不能直接替换；旧报告和订单保持不变")
+                from paper_live import connect as live_connect
+                with live_connect() as live:
+                    if live.execute("SELECT 1 FROM orders WHERE id LIKE ? AND state IN ('submitted','filled')",("linkage:"+day+":%",)).fetchone():
+                        raise ValueError("今日联动计划已提交或成交，不能直接替换")
+                for account in state["accounts"].values():
+                    account["orders"] = [o for o in account["orders"] if o.get("date") != day]
+                # Cancelled/expired live IDs cannot be reused as new orders.
+                with live_connect() as live:
+                    if live.execute("SELECT 1 FROM orders WHERE id LIKE ?",("linkage:"+day+":%",)).fetchone():
+                        raise ValueError("今日联动计划已有委托记录，需单独处理，不能直接替换")
             from paper_quality import calendar, quality, ensure_bars
             dates = calendar(day)
             ensure_bars([i["code"] for i in items[:150]] + ["510300"],day,dates)
@@ -396,9 +411,14 @@ def _run_impl(payload=None, decision_fn=None):
                 linkage_record = {"error": str(exc)}
             record = {"linkage": linkage_record, "date": day, "version": VERSION, "input": context, "plan": plan,
                       "generatedAt": now().isoformat()}
-            conn.execute("INSERT INTO decisions VALUES (?,?)", (day, json.dumps(record, ensure_ascii=False)))
+            revision = json.loads(previous[0]).get("revision", 1)+1 if previous else 1
+            record.update(revision=revision, sourceGeneratedAt=payload.get("generatedAt"))
+            if previous:
+                conn.execute("CREATE TABLE IF NOT EXISTS decision_revisions(archived TEXT,date TEXT,body TEXT)")
+                conn.execute("INSERT INTO decision_revisions VALUES(?,?,?)",(now().isoformat(),day,previous[0]))
+            conn.execute("INSERT OR REPLACE INTO decisions VALUES (?,?)", (day, json.dumps(record, ensure_ascii=False)))
             conn.execute("INSERT OR REPLACE INTO state VALUES (1,?)", (json.dumps(state, ensure_ascii=False),))
-        return {"done": day}
+        return {"done": day, "revision": revision}
     except Exception as exc:
         # Store safe, application-generated messages only; never HTTP response bodies.
         STATUS["error"] = str(exc) if isinstance(exc, (ValueError, RuntimeError)) else "模拟任务失败，请检查本地数据或配置"
@@ -410,9 +430,9 @@ def _run_impl(payload=None, decision_fn=None):
         LOCK.release()
 
 
-def run(payload=None, decision_fn=None):
-    result = _run_impl(payload, decision_fn)
-    STATUS["message"] = result.get("skipped") or result.get("error") or ("决策完成 " + result.get("done", ""))
+def run(payload=None, decision_fn=None, force=False):
+    result = _run_impl(payload, decision_fn, force=force)
+    STATUS["message"] = result.get("skipped") or result.get("error") or ("决策完成 " + result.get("done", "") + " · 第" + str(result.get("revision", 1)) + "版")
     return result
 
 
@@ -428,7 +448,7 @@ def submit():
         STATUS.update(running=True, error=None, message="已提交，正在检查数据并生成决策", requestId=request_id)
         def execute():
             try:
-                run()
+                run(force=True)
             finally:
                 STATUS.update(completedRequestId=request_id, running=False)
         threading.Thread(target=execute, daemon=True).start()
@@ -448,7 +468,7 @@ def summary():
             peak = max(peak, point["equity"])
             drawdown = max(drawdown, 1 - point["equity"] / peak)
         account["drawdownPct"] = round(drawdown * 100, 2)
-    return {**state, "failures": failures, "decisions": [{"date": d["date"], "plan": d["plan"], "linkage": d.get("linkage")} for d in decisions],
+    return {**state, "failures": failures, "decisions": [{"date": d["date"], "revision":d.get("revision",1), "generatedAt":d.get("generatedAt"), "plan": d["plan"], "linkage": d.get("linkage")} for d in decisions],
             "status": dict(STATUS), "rules": "连板/联动账户：盘中条件触发、后续报价估算成交；其余账户：日线开盘模拟；0.1%滑点；每边0.1%费用最低5元；取消4.5%跳空限制，买入按限价/止损校验；开盘封涨停不假定成交，跌停卖单顺延；仅主板普通股及ETF；前复权数据估算；基准20%ETF+80%现金"}
 
 
