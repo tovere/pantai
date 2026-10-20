@@ -20,6 +20,7 @@ def connect():
     CREATE TABLE IF NOT EXISTS quotes(code TEXT, stamp TEXT, received TEXT, body TEXT, PRIMARY KEY(code,stamp));
     CREATE TABLE IF NOT EXISTS orders(id TEXT PRIMARY KEY, state TEXT, body TEXT);
     CREATE TABLE IF NOT EXISTS events(time TEXT, kind TEXT, body TEXT);
+    CREATE TABLE IF NOT EXISTS feature_states(id TEXT PRIMARY KEY, body TEXT);
     CREATE TABLE IF NOT EXISTS heartbeat(id INTEGER PRIMARY KEY, body TEXT);
     """)
     try:
@@ -73,7 +74,7 @@ def tick():
                 account = state["accounts"]["linkage"]
                 # No overnight catch-up of missed real-time orders.
                 codes = set(account["positions"])
-                for order in account["orders"]:
+                for order in account["orders"] + account.get("watchlist", []):
                     codes.add(order["code"])
                     codes.update(order.get("conditions", {}).get("peers", []))
                     if order.get("linkage"):
@@ -83,6 +84,26 @@ def tick():
                 live.execute("INSERT OR REPLACE INTO heartbeat VALUES(1,?)",(json.dumps({"time":stamp.isoformat(),"session":session,"watching":len(codes),"fresh":len(batch),"source":"tencent"}),))
                 for q in batch.values():
                     live.execute("INSERT OR IGNORE INTO quotes VALUES(?,?,?,?)",(q["code"],q["stamp"],stamp.isoformat(),json.dumps(q)))
+                from paper_features import advance
+                from paper_divergence import valid_session
+                trackers = {o["date"]+":"+o["code"]:o for o in account.get("watchlist", [])}
+                trackers.update({o["date"]+":"+o["code"]:o for o in account["orders"] if o.get("conditions")})
+                features = {}
+                for tracker_id, tracker in trackers.items():
+                    conditions = tracker["conditions"]
+                    saved_feature = live.execute("SELECT body FROM feature_states WHERE id=?",(tracker_id,)).fetchone()
+                    previous = json.loads(saved_feature[0]) if saved_feature else None
+                    if stamp.date().isoformat() <= conditions["signalDate"]:
+                        continue
+                    if not valid_session(conditions,stamp.date().isoformat()):
+                        feature = {"state":"expired","reason":"超出次一交易日","time":stamp.isoformat()}
+                    else:
+                        feature = advance(conditions,batch.get(tracker["code"]),batch,previous,stamp)
+                    feature.update(code=tracker["code"],name=tracker["name"],signalDate=tracker["date"])
+                    features[tracker_id]=feature
+                    live.execute("INSERT OR REPLACE INTO feature_states VALUES(?,?)",(tracker_id,json.dumps(feature)))
+                    if not previous or previous.get("state") != feature["state"]:
+                        live.execute("INSERT INTO events VALUES(?,?,?)",(stamp.isoformat(),"feature_change",json.dumps({"id":tracker_id,"before":previous.get("state") if previous else None,"after":feature["state"],"reason":feature["reason"]})))
                 # A held position's stop can trigger during the session, subject to T+1.
                 for code,pos in account["positions"].items():
                     q=batch.get(code)
@@ -122,15 +143,12 @@ def tick():
                     if saved and status == "submitted" and (stamp-datetime.fromisoformat(body["submittedAt"])).total_seconds()>60:
                         status = "expired"
                     if conditions:
-                        if quote["last"]<=conditions["invalidateBelow"]:
-                            live.execute("INSERT OR REPLACE INTO orders VALUES(?,?,?)",(order_id,"cancelled",json.dumps({**order,"event":"结构失效"})))
-                            live.execute("INSERT INTO events VALUES(?,?,?)",(stamp.isoformat(),"cancelled",json.dumps({"id":order_id,"reason":"跌破结构失效位"})))
+                        feature = features.get(order["date"]+":"+order["code"], {})
+                        if feature.get("state") == "invalidated" or (status == "submitted" and feature.get("state") != "confirmed"):
+                            live.execute("INSERT OR REPLACE INTO orders VALUES(?,?,?)",(order_id,"cancelled",json.dumps({**order,"event":feature.get("reason","确认失效")})))
+                            live.execute("INSERT INTO events VALUES(?,?,?)",(stamp.isoformat(),"cancelled",json.dumps({"id":order_id,"reason":feature.get("reason")})))
                             continue
-                        from paper_divergence import triggered
-                        if not triggered(conditions,quote,batch):
-                            if status == "submitted":
-                                live.execute("INSERT OR REPLACE INTO orders VALUES(?,?,?)",(order_id,"cancelled",json.dumps({**order,"event":"回流条件失效"})))
-                                continue
+                        if feature.get("state") != "confirmed":
                             remaining.append(order);continue
                     if status == "planned":
                         relation = order.get("linkage")
@@ -214,7 +232,7 @@ def status():
         heartbeat=json.loads(row[0]) if row else None
         if heartbeat:
             heartbeat["alive"] = (paper.now()-datetime.fromisoformat(heartbeat["time"])).total_seconds()<45
-        return {"heartbeat":heartbeat,"events":[dict(r) for r in conn.execute("SELECT * FROM events ORDER BY rowid DESC LIMIT 20")],"orders":[dict(r) for r in conn.execute("SELECT * FROM orders ORDER BY rowid DESC LIMIT 30")]}
+        return {"features":[json.loads(r[0]) for r in conn.execute("SELECT body FROM feature_states ORDER BY rowid DESC LIMIT 100")],"heartbeat":heartbeat,"events":[dict(r) for r in conn.execute("SELECT * FROM events ORDER BY rowid DESC LIMIT 20")],"orders":[dict(r) for r in conn.execute("SELECT * FROM orders ORDER BY rowid DESC LIMIT 30")]}
 
 
 if __name__=="__main__":

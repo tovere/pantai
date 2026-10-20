@@ -396,14 +396,17 @@ def _run_impl(payload=None, decision_fn=None, force=False):
                 divergence_codes = {i["code"] for i in divergence_items}
                 link_items = [i for i in link_items if i["code"] not in divergence_codes] + divergence_items
                 link_account = state["accounts"]["linkage"]
+                from paper_live import status as live_status
+                observed_features = live_status().get("features", [])
                 link_input = {"date": day, "account": json.loads(json.dumps(link_account)),
                               "candidates": link_items, "relationships": relations, "market": market,
                               "divergenceScan":divergence_result["scan"],
+                              "observedFeatureStates":[f for f in observed_features if f.get("time", "")[:10]<=day],
                               "recentBars":{i["code"]:[b for b in bars(i["code"]) if b[0]<=day][-30:] for i in link_items},
                               "maxPremium": .07,
                               "execution": "次日盘中每10秒验证A涨幅0到9.9%、B涨幅-2%到7%，不满足继续等待。触发提交后等后续有效报价模拟成交，提交超60秒过期；T+1；买入遵守max_price和stop；不模拟涨停排队",
                               "relationshipQuality": "同一正式行业、A板数高于B，仅弱关联，非已验证带动关系",
-                              "divergenceRules":"source=涨停后分歧的候选使用独立evidence，不套用连板概率。entry.eligible=false只能watch；buy须max_price>=triggerPrice且<=maxPrice，stop>=结构stop。次一交易日突破分歧日高点且至少2个行业样本股转强才提交；跌破失效位取消。缠论与威科夫证据分开，不得把未确认写成已确认"}
+                              "divergenceRules":"source=涨停后分歧的候选使用独立evidence，不套用连板概率。entry.eligible=false只能watch；buy须max_price>=triggerPrice且<=maxPrice，stop>=结构stop。次一交易日突破分歧日高点且至少2个行业样本股转强，全部样本连续至少3组新报价且持续20秒才提交；缺失/过期重置确认。观察项只跟踪，不能自动买入；跌破失效位取消。缠论与威科夫证据分开，不得把未确认写成已确认"}
                 link_plan = (decision_fn or decide)(link_input)
                 for action in link_plan["actions"]:
                     selected = next((i for i in link_items if i["code"] == action["code"]), {})
@@ -418,6 +421,12 @@ def _run_impl(payload=None, decision_fn=None, force=False):
                         else:
                             order["linkage"] = next(r for r in relations if r["follower"] == order["code"])
                 link_account["orders"].extend(link_orders)
+                link_account["watchlist"] = [{"code":i["code"], "name":i["name"], "date":day,
+                    "conditions":{"entryMin":i["evidence"]["entry"]["triggerPrice"],
+                      "invalidateBelow":i["evidence"]["entry"]["stop"],
+                      "peers":i["evidence"]["sector"]["match"]["leaders"],
+                      "minPositivePeers":2,"signalDate":day}}
+                    for i in divergence_items if i["evidence"]["entry"]["eligible"]]
                 for code, pos in link_account["positions"].items():
                     if pos["mark"] <= pos["stop"] and not any(o["code"] == code for o in link_account["orders"]):
                         link_account["orders"].append({"code":code,"name":pos["name"],"action":"sell","date":day,"reason":"联动账户收盘止损"})

@@ -57,6 +57,7 @@ function formatTime(value?: null | string, fallback = '—') {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? fallback : timeFormatter.format(date);
 }
+const featureNames: Record<string, string> = { waiting: '等待回流', confirming: '连续确认中', confirmed: '转强条件确认', invalidated: '结构失效', data_wait: '等待有效行情', expired: '已过期' };
 const actionNames: Record<string, string> = { watch: '观察', buy: '买入', sell: '卖出', hold: '持有' };
 const actionName = (action: string) => actionNames[action] || action;
 const money = (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
@@ -78,6 +79,14 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
       <p>行情源：腾讯快照 · {{ live.heartbeat?.session ? '交易时段' : '休市等待' }} · 监控 {{ live.heartbeat?.watching ?? 0 }} 只 · 有效报价 {{ live.heartbeat?.fresh ?? 0 }} 只</p>
       <p>最近心跳：{{ formatTime(live.heartbeat?.time, '尚未启动') }}</p>
       <el-table :data="live.orders" max-height="220"><el-table-column prop="id" label="实时委托" min-width="260" /><el-table-column prop="state" label="状态" /></el-table>
+      <h4>分歧候选 · 动态证据</h4>
+      <p class="muted">观察名单也会跟踪，但只有已授权买单才可执行。至少3组个股与行业样本的新报价，持续20秒确认；行情中断或条件不符重新计时。</p>
+      <el-table :data="live.features || []" max-height="260">
+        <el-table-column prop="code" label="代码" /><el-table-column prop="name" label="名称" />
+        <el-table-column label="特征状态"><template #default="{row}">{{ featureNames[row.state] || row.state }}</template></el-table-column>
+        <el-table-column prop="count" label="连续有效样本" /><el-table-column prop="reason" label="依据" min-width="240" />
+        <el-table-column label="最近观察"><template #default="{row}">{{ formatTime(row.time) }}</template></el-table-column>
+      </el-table>
       <p class="muted">planned 等待触发 · submitted 已提交 · filled 模拟成交 · cancelled 取消 · expired 过期。买卖盘口报价用于成交估算，不模拟排队。</p>
     </el-card>
     <template v-if="data">
@@ -119,6 +128,7 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
             <el-table-column label="缠论"><template #default="{row}">{{ row.evidence.chan.pivotCount }}个中枢 · {{ row.evidence.chan.abovePivot ? '低点在中枢上方' : '未确认回踩不入中枢' }} · 买点未确认</template></el-table-column>
             <el-table-column label="威科夫量价"><template #default="{row}">{{ row.evidence.wyckoff.breakoutRetest ? '箱体突破后回测' : '未确认箱体回测' }} · 缩量测试候选</template></el-table-column>
             <el-table-column prop="evidence.sector.match.name" label="行业样本" />
+            <el-table-column label="证据变化"><template #default="{row}">{{ row.evidence.evolution?.previousDate ? `对比${row.evidence.evolution.previousDate}，${row.evidence.evolution.changes.length}项变化` : '首次记录，暂无前值' }}</template></el-table-column>
             <el-table-column prop="evidence.entry.triggerPrice" label="触发参考" /><el-table-column prop="evidence.entry.maxPrice" label="限价上限" /><el-table-column prop="evidence.entry.stop" label="失效位" />
             <el-table-column label="条件完整"><template #default="{row}">{{ row.evidence.entry.eligible ? '可供Agent评估授权' : '仅观察' }}</template></el-table-column>
           </el-table>

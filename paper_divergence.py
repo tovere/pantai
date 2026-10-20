@@ -83,6 +83,8 @@ def prepare(day, with_scan=False):
         output.append({'code':code,'name':stock['name'],'close':ev['close'],'grade':'未评级',
                        'flags':[],'height':0,'probability':None,'contextProbability':None,
                        'source':'涨停后分歧','quality':ev['quality'],'evidence':ev})
+    from paper_features import save_evidence
+    save_evidence(output,day)
     scan={'signalDate':day,'previousLimitDate':previous,'sourceCount':len(source),
           'incompleteHistory':incomplete,'matched':len(output),
           'definition':'前交易日真实主板涨停；今日阴线、收跌不超过3%、量比<0.8；130个交易日日线校验',
