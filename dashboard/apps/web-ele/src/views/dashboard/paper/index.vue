@@ -23,6 +23,8 @@ async function run() {
   catch { error.value = '提交失败，请重试'; }
   finally { submitting.value = false; }
 }
+const actionNames: Record<string, string> = { watch: '观察', buy: '买入', sell: '卖出', hold: '持有' };
+const actionName = (action: string) => actionNames[action] || action;
 const money = (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
 onMounted(refresh);
 onUnmounted(() => { stopped = true; clearTimeout(timer); });
@@ -62,18 +64,18 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
             <el-table-column prop="reason" label="持有依据" min-width="220" />
           </el-table>
           <h3>待成交计划</h3>
-          <el-table :data="a.orders"><el-table-column prop="date" label="决策日期" /><el-table-column prop="code" label="代码" /><el-table-column prop="action" label="操作" /><el-table-column prop="reason" label="依据" min-width="280" /></el-table>
+          <el-table :data="a.orders"><el-table-column prop="date" label="决策日期" /><el-table-column prop="code" label="代码" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="reason" label="依据" min-width="280" /></el-table>
           <h3>成交与取消记录</h3>
-          <el-table :data="[...a.trades].reverse()" max-height="340"><el-table-column prop="filledDate" label="处理日期" /><el-table-column prop="name" label="名称" /><el-table-column prop="action" label="操作" /><el-table-column prop="price" label="模拟价格" /><el-table-column prop="status" label="状态" /><el-table-column prop="note" label="未成交原因" /></el-table>
+          <el-table :data="[...a.trades].reverse()" max-height="340"><el-table-column prop="filledDate" label="处理日期" /><el-table-column prop="name" label="名称" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="price" label="模拟价格" /><el-table-column prop="status" label="状态" /><el-table-column prop="note" label="未成交原因" /></el-table>
           <h3>每日净值</h3>
           <el-table :data="[...a.curve].reverse()" max-height="300"><el-table-column prop="date" label="日期" /><el-table-column prop="equity" label="资产（元）" /><el-table-column label="行情未更新持仓"><template #default="{row}">{{ row.stale.join(' / ') || '无' }}</template></el-table-column></el-table>
         </el-tab-pane>
       </el-tabs>
       <el-card shadow="never"><h3>每日决策复盘</h3><el-empty v-if="!data.decisions.length" description="尚无决策，等待当日完整收盘快照" />
         <section v-for="d in data.decisions" :key="d.date"><h4>{{ d.date }} · {{ d.plan.model }}</h4>
-          <template v-if="d.linkage"><h4>连板/联动账户</h4><p>{{ d.linkage.error || d.linkage.plan?.review }}</p>
-          <el-table :data="d.linkage.plan?.actions || []"><el-table-column prop="code" label="代码" /><el-table-column prop="action" label="操作" /><el-table-column prop="reason" label="A/B联动依据" min-width="280" /></el-table></template><p>{{ d.plan.review }}</p>
-          <el-table :data="d.plan.actions"><el-table-column prop="code" label="代码" /><el-table-column prop="action" label="操作" /><el-table-column prop="reason" label="判断依据与退出条件" min-width="300" /></el-table>
+          <template v-if="d.linkage"><h4>连板/联动账户 · 次日条件计划</h4><p>{{ d.linkage.error || d.linkage.plan?.review }}</p>
+          <el-table :data="d.linkage.plan?.actions || []"><el-table-column prop="code" label="代码" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="reason" label="A/B联动依据" min-width="280" /></el-table></template><p>{{ d.plan.review }}</p>
+          <el-table :data="d.plan.actions"><el-table-column prop="code" label="代码" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="reason" label="判断依据与退出条件" min-width="300" /></el-table>
         </section>
       </el-card>
       <p class="muted">{{ data.rules }}</p>

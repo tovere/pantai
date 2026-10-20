@@ -136,6 +136,12 @@ def build():
         eligible = [r for r in history if r.get("nextDate") and r["nextDate"] <= latest and r["continued"] is not None and r["kind"] == "sealed"][-20000:]
         base = sum(r["continued"] for r in eligible)/len(eligible) if eligible else None
         current = []
+        from paper_quality import market as observed_market
+        try:
+            current_market = observed_market(latest)
+        except ValueError:
+            current_market = {"phase_cn":"未确认","max_height":max((i.get("continue_day_cnt") or 1 for i in pool["items"]),default=0),"phase":None}
+        result["market"] = current_market
         for item in pool["items"]:
             code = str(item.get("ticker", ""))
             if not code.startswith(("000","001","002","003","600","601","603","605")) or item.get("is_st"):
@@ -145,8 +151,8 @@ def build():
             peers = [r for r in eligible if min(r["height"],4) == min(height,4)]
             n = len(peers)
             probability = (sum(r["continued"] for r in peers)+30*base)/(n+30) if n>=50 and base is not None else None
-            context_probability, context_samples = estimate({"height": height}, markets[latest], eligible, markets, probability)
-            current.append({"contextProbability":context_probability, "contextSamples":context_samples, "phase": markets[latest]["phase_cn"], "spaceHeight":markets[latest]["max_height"], "code":code, "name":item.get("name"), "height":height,
+            context_probability, context_samples = None, 0
+            current.append({"contextProbability":context_probability, "contextSamples":context_samples, "phase": current_market["phase_cn"], "spaceHeight":current_market["max_height"], "code":code, "name":item.get("name"), "height":height,
                             "close":item.get("last_price"), "date":latest,
                             "probability":round(probability*100,1) if probability is not None else None,
                             "samples":n, "baseline":round(base*100,1) if base is not None else None,

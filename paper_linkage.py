@@ -10,6 +10,10 @@ def prepare(day):
     result = json.loads(path.read_text())
     if result.get("date") != day or result.get("intraday"):
         raise ValueError("连板账户等待当日收盘分析")
+    from paper_quality import market, calendar, quality
+    import paper_agent
+    current_market = market(day)
+    dates = calendar(day)
     items = result.get("items", [])
     relationships = []
     for sector in result.get("sectors", []):
@@ -26,11 +30,13 @@ def prepare(day):
                                   "minLeaderGap": 0, "maxLeaderGap": .099,
                                   "minFollowerGap": -.02, "maxFollowerGap": .07})
     allowed = {r["follower"] for r in relationships}
+    from paper_quality import ensure_bars
+    ensure_bars(allowed,day,dates)
     candidates = [{"code":r["code"], "name":r["name"], "close":r["close"],
                    "grade": "B", "flags": [], "height":r["height"],
-                   "probability":r["probability"], "contextProbability":r.get("contextProbability")}
+                   "probability":r["probability"], "contextProbability":None, "quality":quality(paper_agent.bars(r["code"]),day,dates)}
                   for r in items if r["code"] in allowed]
-    return candidates, relationships, result.get("market", {})
+    return candidates, relationships, current_market
 
 
 def check(order, execution_day, read_bars):
