@@ -54,17 +54,22 @@ def build():
         index = {date: i for i, date in enumerate(stock["dates"])}
         for j, day in enumerate(calendar):
             i = index.get(day)
-            if i is None or i < 1 or (j > 0 and stock["dates"][i-1] != calendar[j-1]) or not stock["lu"][i]:
+            if i is None or i < 1 or (j > 0 and stock["dates"][i-1] != calendar[j-1]) or not (stock["lu"][i] or stock["brk"][i]):
                 continue
             next_day = calendar[j + 1] if j + 1 < len(calendar) else None
             ni = index.get(next_day)
             if next_day and (date_type.fromisoformat(next_day) - date_type.fromisoformat(day)).days > 10:
                 ni = None
             records[day].append({
-                "code": stock["code"], "height": stock["streak"][i],
+                "kind": "sealed" if stock["lu"][i] else "broken", "code": stock["code"], "height": stock["streak"][i],
                 "onePrice": bool(stock["yizi"][i]), "close": stock["C"][i],
                 "volumeRatio": stock["V"][i] / max(1, sum(stock["V"][max(0, i-5):i]) / min(i, 5)),
                 "nextDate": next_day,
+                "decent": stock["H"][ni] >= stock["C"][i]*1.02 if ni is not None else None,
+                "redClose": stock["C"][ni] > stock["C"][i] if ni is not None else None,
+                "gapDown": stock["O"][ni] <= stock["C"][i]*.97 if ni is not None else None,
+                "negative": stock["C"][ni] <= stock["C"][i]*.95 if ni is not None else None,
+                "nextReturn": (stock["C"][ni]/stock["C"][i]-1)*100 if ni is not None else None,
                 "continued": bool(stock["lu"][ni]) if ni is not None else None,
                 "touched": bool(stock["H"][ni] >= cycle.limit_px(stock["C"][i], .1) - .01) if ni is not None else None,
                 "openPremium": round((stock["O"][ni] / stock["C"][i] - 1) * 100, 2) if ni is not None else None,
@@ -73,7 +78,7 @@ def build():
     history, predictions = [], []
     for day in calendar:
         # Only labels observable by today's close enter training.
-        eligible = [r for r in history if r["nextDate"] and r["nextDate"] <= day and r["continued"] is not None]
+        eligible = [r for r in history if r["nextDate"] and r["nextDate"] <= day and r["continued"] is not None and r["kind"] == "sealed"]
         eligible = eligible[-20000:]
         base = sum(r["continued"] for r in eligible) / len(eligible) if eligible else None
         groups = defaultdict(list)
@@ -86,7 +91,7 @@ def build():
             predictions.append({**row, "date": day, "probability": round(probability * 100, 1) if probability is not None else None,
                                 "samples": n, "baseline": round(base * 100, 1) if base is not None else None})
         history.extend(records[day])
-    scored = [r for r in predictions if r["probability"] is not None and r["continued"] is not None]
+    scored = [r for r in predictions if r["probability"] is not None and r["continued"] is not None and r["kind"] == "sealed"]
     bins = []
     for low in range(0, 100, 10):
         group = [r for r in scored if low <= r["probability"] < low + 10]
@@ -94,11 +99,24 @@ def build():
             bins.append({"range": f"{low}–{low+10}%", "samples": len(group),
                          "predicted": round(sum(r["probability"] for r in group)/len(group),1),
                          "actual": round(sum(r["continued"] for r in group)/len(group)*100,1)})
+    outcomes = []
+    for kind in ("sealed", "broken"):
+        sample = [r for r in predictions if r["kind"] == kind and r["continued"] is not None]
+        for height in (None, 1, 2, 3):
+            subset = sample if height is None else [r for r in sample if r["height"] == height]
+            if not subset:
+                continue
+            outcomes.append({"kind": kind, "group": "全部" if height is None else str(height)+"板",
+                             "samples": len(subset), "start": min(r["date"] for r in subset),
+                             "end": max(r["date"] for r in subset),
+                             **{key: round(sum(r[key] for r in subset)/len(subset)*100,2)
+                                for key in ("continued","touched","decent","redClose","gapDown","negative")},
+                             "avgNextReturn": round(sum(r["nextReturn"] for r in subset)/len(subset),2)})
     latest = calendar[-1]
     result = {"date": latest, "generatedAt": datetime.now(timezone(timedelta(hours=8))).isoformat(),
               "priceBasis": "none" if raw.exists() else "forward", "version": "daily-baseline-v2", "market": days[-1],
               "items": sorted([r for r in predictions if r["date"] == latest], key=lambda r: -(r["probability"] or -1)),
-              "calibration": bins, "history": predictions[-500:],
+              "outcomes": outcomes, "outcomeDefinition": "体面率=次日最高价≥信号日收盘价×1.02；红盘率=次日收盘高于信号收盘；低开=≤-3%；负反馈=收盘≤-5%；价格机会非成交收益", "calibration": bins, "history": predictions[-500:],
               "warnings": ["本地前复权日线推算涨停，非交易所精确涨停价；历史ST和上市状态未完整还原。",
                            "当前为主板日线基线，未接入封单、封板时间与历史板块归属；不代表完整连板模型。",
                            "openBuyable仅表示开盘未封涨停，不能证明实际成交。"],
@@ -109,7 +127,7 @@ def build():
     pool_path = DIR / (latest + ".json")
     if pool_path.exists():
         pool = json.loads(pool_path.read_text())
-        eligible = [r for r in history if r.get("nextDate") and r["nextDate"] <= latest and r["continued"] is not None][-20000:]
+        eligible = [r for r in history if r.get("nextDate") and r["nextDate"] <= latest and r["continued"] is not None and r["kind"] == "sealed"][-20000:]
         base = sum(r["continued"] for r in eligible)/len(eligible) if eligible else None
         current = []
         for item in pool["items"]:

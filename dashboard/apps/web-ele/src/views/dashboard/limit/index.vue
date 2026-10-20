@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { requestClient } from '#/api/request';
 interface Prediction { code: string; height: number; close: number; probability: null | number; samples: number; baseline: null | number; date: string; continued: null | boolean }
-interface Result { poolItems?: {ticker: string; name: string; continue_day_cnt: number; limit_up_reason: string; seal_money: number}[]; currentSectors?: {name: string; members: number; limitCount: number; limitPct: number; maxHeight: number}[]; stale?: boolean; poolDate?: string; status?: {running: boolean; error: string | null}; themes?: {theme: string; count: number; maxHeight: number}[]; date?: string; warnings: string[]; items: Prediction[]; calibration: {range: string; samples: number; predicted: number; actual: number}[]; history: Prediction[]; brier?: number }
+interface Result { outcomes?: {kind: string; group: string; samples: number; continued: number; touched: number; decent: number; redClose: number; gapDown: number; negative: number; avgNextReturn: number; start: string; end: string}[]; outcomeDefinition?: string; poolItems?: {ticker: string; name: string; continue_day_cnt: number; limit_up_reason: string; seal_money: number}[]; currentSectors?: {name: string; members: number; limitCount: number; limitPct: number; maxHeight: number}[]; stale?: boolean; poolDate?: string; status?: {running: boolean; error: string | null}; themes?: {theme: string; count: number; maxHeight: number}[]; date?: string; warnings: string[]; items: Prediction[]; calibration: {range: string; samples: number; predicted: number; actual: number}[]; history: Prediction[]; brier?: number }
 const data = ref<Result>();
 const error = ref('');
 function formatSealMoney(value: null | number | undefined) {
@@ -44,6 +44,17 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
       <el-table :data="data.currentSectors || []"><el-table-column prop="name" label="行业" /><el-table-column prop="members" label="成分数量" /><el-table-column prop="limitCount" label="涨停数量" /><el-table-column prop="limitPct" label="涨停占比(%)" /><el-table-column prop="maxHeight" label="最高板" /></el-table>
       <h3>涨停原因聚合（非正式板块成分）</h3>
       <el-table :data="data.themes || []"><el-table-column prop="theme" label="题材文本" /><el-table-column prop="count" label="涨停数量" /><el-table-column prop="maxHeight" label="最高板" /></el-table>
+      <h3>涨停 / 炸板次日表现回测</h3>
+      <p>{{ data.outcomeDefinition }}</p>
+      <el-table :data="data.outcomes || []">
+        <el-table-column label="类型"><template #default="{row}">{{ row.kind === 'sealed' ? '收盘涨停' : '炸板' }}</template></el-table-column>
+        <el-table-column prop="group" label="分组" /><el-table-column prop="samples" label="样本" />
+        <el-table-column prop="start" label="开始日期" /><el-table-column prop="end" label="结束日期" />
+        <el-table-column prop="continued" label="次日封板率(%)" /><el-table-column prop="touched" label="触板率(%)" />
+        <el-table-column prop="decent" label="体面率(+2%)(%)" /><el-table-column prop="redClose" label="红盘率(%)" />
+        <el-table-column prop="gapDown" label="低开≤-3%(%)" /><el-table-column prop="negative" label="收盘≤-5%(%)" />
+        <el-table-column prop="avgNextReturn" label="平均次日涨跌(%)" />
+      </el-table>
       <h3>按时间向前预测的概率校准</h3>
       <el-table :data="data.calibration"><el-table-column prop="range" label="概率分组" /><el-table-column prop="samples" label="样本数" /><el-table-column prop="predicted" label="平均预测(%)" /><el-table-column prop="actual" label="实际晋级(%)" /></el-table>
     </template>
