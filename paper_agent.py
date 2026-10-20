@@ -416,6 +416,25 @@ def run(payload=None, decision_fn=None):
     return result
 
 
+REQUEST_LOCK = threading.Lock()
+
+
+def submit():
+    import uuid
+    with REQUEST_LOCK:
+        if STATUS.get("running"):
+            return {"started":False,"message":"已有决策任务运行中，请等待完成"}
+        request_id = uuid.uuid4().hex
+        STATUS.update(running=True, error=None, message="已提交，正在检查数据并生成决策", requestId=request_id)
+        def execute():
+            try:
+                run()
+            finally:
+                STATUS.update(completedRequestId=request_id, running=False)
+        threading.Thread(target=execute, daemon=True).start()
+        return {"started":True,"requestId":request_id,"message":"决策任务已提交"}
+
+
 def summary():
     with connect() as conn:
         state = load(conn)

@@ -260,8 +260,7 @@ class Handler(BaseHTTPRequestHandler):
             _spawn(refresh_limit)
             self._send({"started": "limit"})
         elif p == "/paper/run":
-            _spawn(paper_agent.run)
-            self._send({"started": "paper"})
+            self._send(paper_agent.submit())
         elif p == "/watch/run":
             key = (q.get("key") or ["all"])[0]
             if key == "all":

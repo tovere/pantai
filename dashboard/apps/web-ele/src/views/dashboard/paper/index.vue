@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import EquityChart from './EquityChart.vue';
+import { ElMessage } from 'element-plus';
 import { onMounted, onUnmounted, ref } from 'vue';
 import { getPaperSummary, getPaperLive, runPaper } from '#/api/paper';
 import type { PaperSummary, PaperLiveStatus } from '#/api/paper';
@@ -8,19 +9,43 @@ const live = ref<PaperLiveStatus>();
 const data = ref<PaperSummary>();
 const error = ref('');
 const submitting = ref(false);
+const pendingRequest = ref('');
+const feedback = ref('');
+const feedbackType = ref<'info' | 'success' | 'warning' | 'error'>('info');
 const account = ref('agent');
 const names: Record<string, string> = { linkage: '连板/联动账户', agent: 'Agent 自主账户', rules: '固定规则账户', benchmark: '20% ETF 基准' };
 let timer: ReturnType<typeof setTimeout> | undefined;
 let stopped = false;
 async function refresh() {
-  try { const result = await Promise.all([getPaperSummary(), getPaperLive()]); data.value = result[0]; live.value = result[1]; error.value = ''; }
+  try { const result = await Promise.all([getPaperSummary(), getPaperLive()]); data.value = result[0]; live.value = result[1]; error.value = '';
+    const status = result[0].status;
+    if (pendingRequest.value && !status.running && status.requestId !== pendingRequest.value) {
+      pendingRequest.value = '';
+      feedback.value = '后台已重启，任务结果未确认，请检查今日决策记录后重试';
+      feedbackType.value = 'warning';
+    }
+    if (pendingRequest.value && status.completedRequestId === pendingRequest.value) {
+      pendingRequest.value = '';
+      feedback.value = status.error || status.message || '任务已结束';
+      feedbackType.value = status.error ? 'error' : feedback.value.startsWith('决策完成') ? 'success' : 'warning';
+      ElMessage({ message: feedback.value, type: feedbackType.value });
+    } }
   catch { error.value = '模拟账户加载失败，请检查后端服务'; }
   finally { if (!stopped) timer = setTimeout(refresh, 5000); }
 }
 async function run() {
+  if (submitting.value || pendingRequest.value || data.value?.status.running) return;
   submitting.value = true;
-  try { await runPaper(); }
-  catch { error.value = '提交失败，请重试'; }
+  feedback.value = '正在提交决策任务…';
+  feedbackType.value = 'info';
+  try {
+    const result = await runPaper();
+    pendingRequest.value = result.started ? result.requestId || '' : '';
+    feedback.value = result.started ? '已提交，正在检查数据并生成决策，请等待结果。' : result.message;
+    feedbackType.value = result.started ? 'info' : 'warning';
+    ElMessage({ message: feedback.value, type: feedbackType.value });
+  }
+  catch { error.value = '提交结果未确认，请等待页面同步后台状态后再重试'; feedback.value = error.value; feedbackType.value = 'error'; ElMessage.error(error.value); }
   finally { submitting.value = false; }
 }
 const actionNames: Record<string, string> = { watch: '观察', buy: '买入', sell: '卖出', hold: '持有' };
@@ -33,8 +58,9 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
 <template>
   <div class="paper">
     <div class="heading"><div><h2>Agent 模拟盘</h2><p>收盘后生成计划 · 连板/联动账户盘中每10秒检查行情 · 初始资金10万元</p></div>
-      <el-button type="primary" :loading="submitting || data?.status.running" @click="run">运行 / 重试今日决策</el-button>
+      <el-button type="primary" :loading="submitting || !!pendingRequest || data?.status.running" @click="run">{{ submitting ? '提交中…' : pendingRequest || data?.status.running ? '正在生成决策…' : '运行 / 重试今日决策' }}</el-button>
     </div>
+    <el-alert v-if="feedback" :title="feedback" :type="feedbackType" :closable="false" />
     <el-alert v-if="error || data?.status.error" :title="error || data?.status.error || ''" type="error" :closable="false" />
     <el-alert title="每天16点后生成次日计划。连板/联动账户用实时后续报价估算成交；其余账户仍按日线模拟。电脑需保持唤醒并联网。" type="info" :closable="false" />
     <el-alert v-if="data?.status.message" :title="data.status.message" type="info" :closable="false" />
