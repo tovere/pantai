@@ -46,6 +46,9 @@ def build():
     calendar = [day["date"] for day in days]
     if not calendar:
         raise ValueError("本地日线覆盖不足，无法构建有效交易日历")
+    # A snapshot refresh can append today to old history. Never treat a
+    # multi-week gap as the next trading session.
+    from datetime import date as date_type
     records = defaultdict(list)
     for stock in stocks:
         index = {date: i for i, date in enumerate(stock["dates"])}
@@ -55,6 +58,8 @@ def build():
                 continue
             next_day = calendar[j + 1] if j + 1 < len(calendar) else None
             ni = index.get(next_day)
+            if next_day and (date_type.fromisoformat(next_day) - date_type.fromisoformat(day)).days > 10:
+                ni = None
             records[day].append({
                 "code": stock["code"], "height": stock["streak"][i],
                 "onePrice": bool(stock["yizi"][i]), "close": stock["C"][i],
@@ -100,10 +105,39 @@ def build():
               "brier": round(sum((r["probability"]/100-r["continued"])**2 for r in scored)/len(scored),4) if scored else None}
     if raw.exists():
         result["warnings"][0] = "未复权日线推算涨停；历史ST、除权日参考价与新股状态未完整还原，不是交易所精确涨停名单。"
-    from limit_pool import enrich
+    from limit_pool import enrich, DIR
+    pool_path = DIR / (latest + ".json")
+    if pool_path.exists():
+        pool = json.loads(pool_path.read_text())
+        eligible = [r for r in history if r.get("nextDate") and r["nextDate"] <= latest and r["continued"] is not None][-20000:]
+        base = sum(r["continued"] for r in eligible)/len(eligible) if eligible else None
+        current = []
+        for item in pool["items"]:
+            code = str(item.get("ticker", ""))
+            if not code.startswith(("000","001","002","003","600","601","603","605")) or item.get("is_st"):
+                continue
+            height = item.get("continue_day_cnt") or 1
+            # Pool does not specify one-price status: do not guess it.
+            peers = [r for r in eligible if min(r["height"],4) == min(height,4)]
+            n = len(peers)
+            probability = (sum(r["continued"] for r in peers)+30*base)/(n+30) if n>=50 and base is not None else None
+            current.append({"code":code, "name":item.get("name"), "height":height,
+                            "close":item.get("last_price"), "date":latest,
+                            "probability":round(probability*100,1) if probability is not None else None,
+                            "samples":n, "baseline":round(base*100,1) if base is not None else None,
+                            "source":"真实涨停池", "groupNote":"同连板高度历史组；未区分一字板"})
+        result["items"] = sorted(current,key=lambda row: -(row["probability"] or 0))
+        result["candidateSource"] = "同花顺真实涨停池"
+        result["warnings"].append("当前概率按连板高度分组，同组同概率；封单和题材未进入模型，非个股独立概率。")
+    else:
+        result["items"] = []
+        result["warnings"].append("缺少同日真实涨停池，暂停输出候选，避免历史缺口误判。")
     result = enrich(result, latest)
     from limit_sectors import aggregate
     result["sectors"] = aggregate(latest)
+    result["intraday"] = latest == datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d") and datetime.now(timezone(timedelta(hours=8))).hour < 16
+    if result["intraday"]:
+        result["warnings"].append("当前是盘中快照，仅供预览，不是收盘预测。")
     result["stale"] = latest != datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
     archive = OUT.parent / "limit_predictions" / latest
     archive.mkdir(parents=True, exist_ok=True)

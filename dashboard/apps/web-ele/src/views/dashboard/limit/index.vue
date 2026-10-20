@@ -26,8 +26,9 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
       <el-alert v-if="data.stale" title="日线数据不是今天，以下为历史回放，不能用于明日预测" type="warning" :closable="false" />
       <p>数据日期 {{ data.date || '—' }} · Brier {{ data.brier ?? '—' }}（越低越好）</p>
       <el-alert v-for="warning in data.warnings" :key="warning" :title="warning" type="warning" :closable="false" style="margin: 8px 0" />
+      <p>候选以同日真实涨停池为准；概率是同连板高度历史组统计，同组相同，不是个股独立预测。</p>
       <el-table :data="data.items">
-        <el-table-column prop="name" label="名称" /><el-table-column prop="sealTime" label="封板时间" /><el-table-column prop="sealMoney" label="封单金额" /><el-table-column prop="reason" label="涨停原因" min-width="200" />
+        <el-table-column prop="name" label="名称" min-width="100" /><el-table-column label="封板时间"><template #default="{row}">{{ row.sealTime || '数据源未提供' }}</template></el-table-column><el-table-column label="封单金额"><template #default="{row}">{{ row.sealMoney == null ? '数据源未提供' : (row.sealMoney / 10000).toFixed(0) + '万' }}</template></el-table-column><el-table-column label="涨停原因" min-width="200"><template #default="{row}">{{ row.reason || '数据源未提供' }}</template></el-table-column>
         <el-table-column prop="code" label="代码" /><el-table-column prop="height" label="当前板数" /><el-table-column prop="close" label="收盘价" />
         <el-table-column label="次日收盘连板概率"><template #default="{row}">{{ row.probability == null ? '样本不足' : row.probability + '%' }}</template></el-table-column>
         <el-table-column prop="samples" label="历史同组样本" /><el-table-column prop="baseline" label="整体基础晋级率(%)" />
