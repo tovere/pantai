@@ -241,7 +241,20 @@ class Handler(BaseHTTPRequestHandler):
         p, q = self._path_query()
         self._read_body()
         if p == "/limit/run":
-            _spawn(limit_prediction.run)
+            # Execute the current source in a fresh interpreter. Long-running
+            # dashboard servers must not overwrite results with an old module.
+            def refresh_limit():
+                if not limit_prediction.LOCK.acquire(False):
+                    return
+                limit_prediction.STATUS.update(running=True, error=None)
+                try:
+                    completed = subprocess.run([os.sys.executable, str(HERE / "limit_prediction.py"), "--refresh"], cwd=HERE, check=False)
+                    if completed.returncode:
+                        limit_prediction.STATUS["error"] = "分析失败，保留上次结果"
+                finally:
+                    limit_prediction.STATUS["running"] = False
+                    limit_prediction.LOCK.release()
+            _spawn(refresh_limit)
             self._send({"started": "limit"})
         elif p == "/paper/run":
             _spawn(paper_agent.run)

@@ -213,5 +213,9 @@ def daily_loop():
 
 
 if __name__ == "__main__":
+    import sys
+    if "--refresh" in sys.argv:
+        run()
+        raise SystemExit(0)
     result = build()
     print(json.dumps({k: result.get(k) for k in ("date", "brier", "calibration")}, ensure_ascii=False))
