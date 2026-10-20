@@ -57,6 +57,11 @@ function formatTime(value?: null | string, fallback = '—') {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? fallback : timeFormatter.format(date);
 }
+const evidenceNames: Record<string, string> = { volumeRatio: '量比', supportIntact: '支撑保持', pivot: '日线中枢', boxRetest: '箱体回测', industry: '行业样本', trigger: '触发价', stop: '失效位' };
+function evidenceChange(change: {feature: string; before: unknown; after: unknown}) {
+  const value = (v: unknown) => v === null ? '未确认' : typeof v === 'boolean' ? (v ? '是' : '否') : typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return `${evidenceNames[change.feature] || change.feature}：${value(change.before)} → ${value(change.after)}`;
+}
 const featureNames: Record<string, string> = { waiting: '等待回流', confirming: '连续确认中', confirmed: '转强条件确认', invalidated: '结构失效', data_wait: '等待有效行情', expired: '已过期' };
 const actionNames: Record<string, string> = { watch: '观察', buy: '买入', sell: '卖出', hold: '持有' };
 const actionName = (action: string) => actionNames[action] || action;
@@ -128,7 +133,7 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
             <el-table-column label="缠论"><template #default="{row}">{{ row.evidence.chan.pivotCount }}个中枢 · {{ row.evidence.chan.abovePivot ? '低点在中枢上方' : '未确认回踩不入中枢' }} · 买点未确认</template></el-table-column>
             <el-table-column label="威科夫量价"><template #default="{row}">{{ row.evidence.wyckoff.breakoutRetest ? '箱体突破后回测' : '未确认箱体回测' }} · 缩量测试候选</template></el-table-column>
             <el-table-column prop="evidence.sector.match.name" label="行业样本" />
-            <el-table-column label="证据变化"><template #default="{row}">{{ row.evidence.evolution?.previousDate ? `对比${row.evidence.evolution.previousDate}，${row.evidence.evolution.changes.length}项变化` : '首次记录，暂无前值' }}</template></el-table-column>
+            <el-table-column label="证据变化"><template #default="{row}"><template v-if="row.evidence.evolution?.previousDate">对比{{ row.evidence.evolution.previousDate }}<div v-for="change in row.evidence.evolution.changes" :key="change.feature">{{ evidenceChange(change) }}</div><span v-if="!row.evidence.evolution.changes.length">证据无变化</span></template><span v-else>首次记录，暂无前值</span></template></el-table-column>
             <el-table-column prop="evidence.entry.triggerPrice" label="触发参考" /><el-table-column prop="evidence.entry.maxPrice" label="限价上限" /><el-table-column prop="evidence.entry.stop" label="失效位" />
             <el-table-column label="条件完整"><template #default="{row}">{{ row.evidence.entry.eligible ? '可供Agent评估授权' : '仅观察' }}</template></el-table-column>
           </el-table>
