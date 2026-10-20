@@ -21,6 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import watch_export
+import limit_prediction
 import paper_agent
 import watch_export_30f
 
@@ -203,6 +204,8 @@ class Handler(BaseHTTPRequestHandler):
         p, q = self._path_query()
         if p in ("/watch/data", "/watch"):
             self._send(watch_export.load_payload())
+        elif p == "/limit/summary":
+            self._send(limit_prediction.load())
         elif p == "/paper/summary":
             self._send(paper_agent.summary())
         elif p == "/jobs":
@@ -237,7 +240,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         p, q = self._path_query()
         self._read_body()
-        if p == "/paper/run":
+        if p == "/limit/run":
+            _spawn(limit_prediction.run)
+            self._send({"started": "limit"})
+        elif p == "/paper/run":
             _spawn(paper_agent.run)
             self._send({"started": "paper"})
         elif p == "/watch/run":
@@ -279,6 +285,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    _spawn(limit_prediction.daily_loop)
     _spawn(paper_agent.daily_loop)
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"[watch_server] 盯盘后端 http://127.0.0.1:{PORT}")

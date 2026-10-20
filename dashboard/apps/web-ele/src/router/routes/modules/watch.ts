@@ -11,6 +11,12 @@ const routes: RouteRecordRaw[] = [
     path: '/watch',
     children: [
       {
+        name: 'LimitPrediction',
+        path: '/watch/limit',
+        component: () => import('#/views/dashboard/limit/index.vue'),
+        meta: { icon: 'lucide:trending-up', title: '连板概率' },
+      },
+      {
         name: 'WatchPaper',
         path: '/watch/paper',
         component: () => import('#/views/dashboard/paper/index.vue'),
