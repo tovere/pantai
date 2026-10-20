@@ -48,6 +48,15 @@ async function run() {
   catch { error.value = '提交结果未确认，请等待页面同步后台状态后再重试'; feedback.value = error.value; feedbackType.value = 'error'; ElMessage.error(error.value); }
   finally { submitting.value = false; }
 }
+const timeFormatter = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+function formatTime(value?: null | string, fallback = '—') {
+  if (!value) return fallback;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? fallback : timeFormatter.format(date);
+}
 const actionNames: Record<string, string> = { watch: '观察', buy: '买入', sell: '卖出', hold: '持有' };
 const actionName = (action: string) => actionNames[action] || action;
 const money = (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
@@ -67,7 +76,7 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
     <el-card v-if="live" shadow="never" class="live-status">
       <strong>实时模拟执行器：{{ live.heartbeat?.alive ? '运行中' : '未连接' }}</strong>
       <p>行情源：腾讯快照 · {{ live.heartbeat?.session ? '交易时段' : '休市等待' }} · 监控 {{ live.heartbeat?.watching ?? 0 }} 只 · 有效报价 {{ live.heartbeat?.fresh ?? 0 }} 只</p>
-      <p>最近心跳：{{ live.heartbeat?.time || '尚未启动' }}</p>
+      <p>最近心跳：{{ formatTime(live.heartbeat?.time, '尚未启动') }}</p>
       <el-table :data="live.orders" max-height="220"><el-table-column prop="id" label="实时委托" min-width="260" /><el-table-column prop="state" label="状态" /></el-table>
       <p class="muted">planned 等待触发 · submitted 已提交 · filled 模拟成交 · cancelled 取消 · expired 过期。买卖盘口报价用于成交估算，不模拟排队。</p>
     </el-card>
@@ -92,14 +101,14 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
           <h3>待成交计划</h3>
           <el-table :data="a.orders"><el-table-column prop="date" label="决策日期" /><el-table-column prop="code" label="代码" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="reason" label="依据" min-width="280" /></el-table>
           <h3>成交与取消记录</h3>
-          <el-table :data="[...a.trades].reverse()" max-height="340"><el-table-column prop="filledDate" label="处理日期" /><el-table-column prop="name" label="名称" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="price" label="模拟价格" /><el-table-column prop="status" label="状态" /><el-table-column prop="note" label="未成交原因" /></el-table>
+          <el-table :data="[...a.trades].reverse()" max-height="340"><el-table-column label="处理日期"><template #default="{row}">{{ formatTime(row.filledDate) }}</template></el-table-column><el-table-column prop="name" label="名称" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="price" label="模拟价格" /><el-table-column prop="status" label="状态" /><el-table-column prop="note" label="未成交原因" /></el-table>
           <h3>每日净值</h3>
           <el-table :data="[...a.curve].reverse()" max-height="300"><el-table-column prop="date" label="日期" /><el-table-column prop="equity" label="资产（元）" /><el-table-column label="行情未更新持仓"><template #default="{row}">{{ row.stale.join(' / ') || '无' }}</template></el-table-column></el-table>
         </el-tab-pane>
       </el-tabs>
       <el-card shadow="never"><h3>每日决策复盘</h3><el-empty v-if="!data.decisions.length" description="尚无决策，等待当日完整收盘快照" />
         <section v-for="d in data.decisions" :key="d.date"><h4>{{ d.date }} · 第{{ d.revision || 1 }}版 · {{ d.plan.model }}</h4>
-          <p>生成时间：{{ d.generatedAt || '—' }}</p><template v-if="d.linkage"><h4>连板/联动账户 · 次日条件计划</h4><p>{{ d.linkage.error || d.linkage.plan?.review }}</p>
+          <p>生成时间：{{ formatTime(d.generatedAt) }}（北京时间）</p><template v-if="d.linkage"><h4>连板/联动账户 · 次日条件计划</h4><p>{{ d.linkage.error || d.linkage.plan?.review }}</p>
           <h4>涨停后分歧 · 独立证据</h4>
           <p v-if="d.linkage.input?.divergenceScan">来源 {{ d.linkage.input.divergenceScan.previousLimitDate }} 涨停池 · 扫描 {{ d.linkage.input.divergenceScan.sourceCount }} 只 · 命中 {{ d.linkage.input.divergenceScan.matched }} 只 · 历史不足 {{ d.linkage.input.divergenceScan.incompleteHistory }} 只</p>
           <p class="muted">缠论为日线笔中枢结构；威科夫为量价测试候选，均不自动等同买点。行业样本转强仅作为回流代理，尚未验证预测效果。</p>
