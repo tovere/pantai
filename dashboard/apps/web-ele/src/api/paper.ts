@@ -11,3 +11,10 @@ export interface PaperSummary {
 }
 export const getPaperSummary = () => requestClient.get<PaperSummary>('/paper/summary');
 export const runPaper = () => requestClient.post('/paper/run');
+
+export interface PaperLiveStatus {
+  heartbeat: null | {time: string; alive: boolean; session: boolean; watching?: number; fresh?: number; source?: string};
+  orders: {id: string; state: string; body: string}[];
+  events: {time: string; kind: string; body: string}[];
+}
+export const getPaperLive = () => requestClient.get<PaperLiveStatus>('/paper/live');

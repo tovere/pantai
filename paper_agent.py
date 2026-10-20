@@ -47,7 +47,7 @@ def config():
                 (cfg if section is None else section)[match[1]] = json.loads(value) if value.startswith('"') else value[1:-1]
     provider = cfg.get("model_provider", "openai")
     settings = cfg.get("model_providers", {}).get(provider, {})
-    key = os.environ.get(settings.get("env_key", ""), "") or settings.get("experimental_bearer_token", "")
+    key = os.environ.get("PAPER_AGENT_API_KEY", "") or os.environ.get(settings.get("env_key", ""), "") or settings.get("experimental_bearer_token", "")
     if not key:
         raise ValueError("Codex provider 的密钥环境变量不可用")
     if settings.get("wire_api", "responses") != "responses":
@@ -299,8 +299,9 @@ def _run_impl(payload=None, decision_fn=None):
         items = candidates(payload)
         with connect() as conn:
             state = load(conn)
-            for account in state["accounts"].values():
-                settle(account, day)
+            for key, account in state["accounts"].items():
+                if key != "linkage":
+                    settle(account, day)
             conn.execute("INSERT OR REPLACE INTO state VALUES (1,?)", (json.dumps(state, ensure_ascii=False),))
             conn.commit()
             if conn.execute("SELECT 1 FROM decisions WHERE date=?", (day,)).fetchone():

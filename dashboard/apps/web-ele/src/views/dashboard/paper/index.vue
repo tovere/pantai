@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import EquityChart from './EquityChart.vue';
 import { onMounted, onUnmounted, ref } from 'vue';
-import { getPaperSummary, runPaper } from '#/api/paper';
-import type { PaperSummary } from '#/api/paper';
+import { getPaperSummary, getPaperLive, runPaper } from '#/api/paper';
+import type { PaperSummary, PaperLiveStatus } from '#/api/paper';
 
+const live = ref<PaperLiveStatus>();
 const data = ref<PaperSummary>();
 const error = ref('');
 const submitting = ref(false);
@@ -12,7 +13,7 @@ const names: Record<string, string> = { linkage: '连板/联动账户', agent: '
 let timer: ReturnType<typeof setTimeout> | undefined;
 let stopped = false;
 async function refresh() {
-  try { data.value = await getPaperSummary(); error.value = ''; }
+  try { const result = await Promise.all([getPaperSummary(), getPaperLive()]); data.value = result[0]; live.value = result[1]; error.value = ''; }
   catch { error.value = '模拟账户加载失败，请检查后端服务'; }
   finally { if (!stopped) timer = setTimeout(refresh, 5000); }
 }
@@ -29,12 +30,19 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
 
 <template>
   <div class="paper">
-    <div class="heading"><div><h2>Agent 模拟盘</h2><p>每天收盘后自主决策 · 后续行情模拟成交 · 初始资金 10 万元</p></div>
+    <div class="heading"><div><h2>Agent 模拟盘</h2><p>收盘后生成计划 · 连板/联动账户盘中每10秒检查行情 · 初始资金10万元</p></div>
       <el-button type="primary" :loading="submitting || data?.status.running" @click="run">运行 / 重试今日决策</el-button>
     </div>
     <el-alert v-if="error || data?.status.error" :title="error || data?.status.error || ''" type="error" :closable="false" />
-    <el-alert title="每天16点后，后端运行期间自动检查当日收盘快照；历史快照不会启动交易。暂无后续行情时订单保持待处理。" type="info" :closable="false" />
+    <el-alert title="每天16点后生成次日计划。连板/联动账户用实时后续报价估算成交；其余账户仍按日线模拟。电脑需保持唤醒并联网。" type="info" :closable="false" />
     <el-alert v-if="data?.status.message" :title="data.status.message" type="info" :closable="false" />
+    <el-card v-if="live" shadow="never" class="live-status">
+      <strong>实时模拟执行器：{{ live.heartbeat?.alive ? '运行中' : '未连接' }}</strong>
+      <p>行情源：腾讯快照 · {{ live.heartbeat?.session ? '交易时段' : '休市等待' }} · 监控 {{ live.heartbeat?.watching ?? 0 }} 只 · 有效报价 {{ live.heartbeat?.fresh ?? 0 }} 只</p>
+      <p>最近心跳：{{ live.heartbeat?.time || '尚未启动' }}</p>
+      <el-table :data="live.orders" max-height="220"><el-table-column prop="id" label="实时委托" min-width="260" /><el-table-column prop="state" label="状态" /></el-table>
+      <p class="muted">planned 等待触发 · submitted 已提交 · filled 模拟成交 · cancelled 取消 · expired 过期。买卖盘口报价用于成交估算，不模拟排队。</p>
+    </el-card>
     <template v-if="data">
       <div class="cards">
         <el-card v-for="(a, key) in data.accounts" :key="key" shadow="never">

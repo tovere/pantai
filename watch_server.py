@@ -206,6 +206,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(watch_export.load_payload())
         elif p == "/limit/summary":
             self._send(limit_prediction.load())
+        elif p == "/paper/live":
+            import paper_live
+            self._send(paper_live.status())
         elif p == "/paper/summary":
             self._send(paper_agent.summary())
         elif p == "/jobs":
@@ -298,9 +301,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    _spawn(limit_prediction.daily_loop)
-    _spawn(paper_agent.daily_loop)
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    _spawn(limit_prediction.daily_loop)
+    import paper_live
+    _spawn(paper_live.loop)
+    _spawn(paper_agent.daily_loop)
     print(f"[watch_server] 盯盘后端 http://127.0.0.1:{PORT}")
     try:
         srv.serve_forever()
