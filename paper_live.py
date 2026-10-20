@@ -75,6 +75,7 @@ def tick():
                 codes = set(account["positions"])
                 for order in account["orders"]:
                     codes.add(order["code"])
+                    codes.update(order.get("conditions", {}).get("peers", []))
                     if order.get("linkage"):
                         codes.add(order["linkage"]["leader"])
                 batch = {code:q for code,q in quotes(codes).items()
@@ -98,6 +99,12 @@ def tick():
                         continue
                     if order["date"] >= stamp.date().isoformat() and not order.get("intraday"):
                         remaining.append(order);continue
+                    conditions = order.get("conditions")
+                    if conditions:
+                        from paper_divergence import valid_session
+                        if not valid_session(conditions, stamp.date().isoformat()):
+                            live.execute("INSERT OR REPLACE INTO orders VALUES(?,?,?)",(order_id,"expired",json.dumps({**order,"event":"仅次一交易日有效"})))
+                            continue
                     age = (stamp.date()-datetime.fromisoformat(order["date"]).date()).days
                     if age > 4:
                         live.execute("INSERT OR REPLACE INTO orders VALUES(?,?,?)",(order_id,"expired",json.dumps({**order,"event":"计划超过有效期"})))
@@ -114,6 +121,17 @@ def tick():
                     body = json.loads(saved["body"]) if saved else dict(order)
                     if saved and status == "submitted" and (stamp-datetime.fromisoformat(body["submittedAt"])).total_seconds()>60:
                         status = "expired"
+                    if conditions:
+                        if quote["last"]<=conditions["invalidateBelow"]:
+                            live.execute("INSERT OR REPLACE INTO orders VALUES(?,?,?)",(order_id,"cancelled",json.dumps({**order,"event":"结构失效"})))
+                            live.execute("INSERT INTO events VALUES(?,?,?)",(stamp.isoformat(),"cancelled",json.dumps({"id":order_id,"reason":"跌破结构失效位"})))
+                            continue
+                        from paper_divergence import triggered
+                        if not triggered(conditions,quote,batch):
+                            if status == "submitted":
+                                live.execute("INSERT OR REPLACE INTO orders VALUES(?,?,?)",(order_id,"cancelled",json.dumps({**order,"event":"回流条件失效"})))
+                                continue
+                            remaining.append(order);continue
                     if status == "planned":
                         relation = order.get("linkage")
                         leader = batch.get(relation["leader"]) if relation else None
@@ -128,7 +146,7 @@ def tick():
                             remaining.append(order);continue
                         status = "submitted"
                         body["submittedAt"] = quote["stamp"]
-                        body["event"] = "A/B实时价格条件触发" if allowed else "A/B实时条件不满足"
+                        body["event"] = "分歧突破及行业样本转强触发" if conditions else "A/B实时价格条件触发"
                     elif status == "submitted" and quote["stamp"] > body["submittedAt"]:
                         relation = order.get("linkage")
                         if relation:

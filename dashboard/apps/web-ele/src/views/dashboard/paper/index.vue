@@ -100,6 +100,19 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
       <el-card shadow="never"><h3>每日决策复盘</h3><el-empty v-if="!data.decisions.length" description="尚无决策，等待当日完整收盘快照" />
         <section v-for="d in data.decisions" :key="d.date"><h4>{{ d.date }} · 第{{ d.revision || 1 }}版 · {{ d.plan.model }}</h4>
           <p>生成时间：{{ d.generatedAt || '—' }}</p><template v-if="d.linkage"><h4>连板/联动账户 · 次日条件计划</h4><p>{{ d.linkage.error || d.linkage.plan?.review }}</p>
+          <h4>涨停后分歧 · 独立证据</h4>
+          <p v-if="d.linkage.input?.divergenceScan">来源 {{ d.linkage.input.divergenceScan.previousLimitDate }} 涨停池 · 扫描 {{ d.linkage.input.divergenceScan.sourceCount }} 只 · 命中 {{ d.linkage.input.divergenceScan.matched }} 只 · 历史不足 {{ d.linkage.input.divergenceScan.incompleteHistory }} 只</p>
+          <p class="muted">缠论为日线笔中枢结构；威科夫为量价测试候选，均不自动等同买点。行业样本转强仅作为回流代理，尚未验证预测效果。</p>
+          <el-table :data="(d.linkage.input?.candidates || []).filter(i => i.source === '涨停后分歧')">
+            <el-table-column prop="code" label="代码" /><el-table-column prop="name" label="名称" />
+            <el-table-column prop="evidence.priceVolume.volumeRatio" label="量比(对昨日)" />
+            <el-table-column prop="evidence.priceVolume.pullbackPct" label="回踩(%)" />
+            <el-table-column label="缠论"><template #default="{row}">{{ row.evidence.chan.pivotCount }}个中枢 · {{ row.evidence.chan.abovePivot ? '低点在中枢上方' : '未确认回踩不入中枢' }} · 买点未确认</template></el-table-column>
+            <el-table-column label="威科夫量价"><template #default="{row}">{{ row.evidence.wyckoff.breakoutRetest ? '箱体突破后回测' : '未确认箱体回测' }} · 缩量测试候选</template></el-table-column>
+            <el-table-column prop="evidence.sector.match.name" label="行业样本" />
+            <el-table-column prop="evidence.entry.triggerPrice" label="触发参考" /><el-table-column prop="evidence.entry.maxPrice" label="限价上限" /><el-table-column prop="evidence.entry.stop" label="失效位" />
+            <el-table-column label="条件完整"><template #default="{row}">{{ row.evidence.entry.eligible ? '可供Agent评估授权' : '仅观察' }}</template></el-table-column>
+          </el-table>
           <el-table :data="d.linkage.plan?.actions || []"><el-table-column prop="code" label="代码" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="reason" label="A/B联动依据" min-width="280" /></el-table></template><p>{{ d.plan.review }}</p>
           <el-table :data="d.plan.actions"><el-table-column prop="code" label="代码" /><el-table-column label="操作"><template #default="{row}">{{ actionName(row.action) }}</template></el-table-column><el-table-column prop="reason" label="判断依据与退出条件" min-width="300" /></el-table>
         </section>

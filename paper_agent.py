@@ -390,18 +390,33 @@ def _run_impl(payload=None, decision_fn=None, force=False):
             try:
                 from paper_linkage import prepare
                 link_items, relations, market = prepare(day)
+                from paper_divergence import prepare as prepare_divergence, condition
+                divergence_result = prepare_divergence(day, with_scan=True)
+                divergence_items = divergence_result["items"]
+                divergence_codes = {i["code"] for i in divergence_items}
+                link_items = [i for i in link_items if i["code"] not in divergence_codes] + divergence_items
                 link_account = state["accounts"]["linkage"]
                 link_input = {"date": day, "account": json.loads(json.dumps(link_account)),
                               "candidates": link_items, "relationships": relations, "market": market,
+                              "divergenceScan":divergence_result["scan"],
                               "recentBars":{i["code"]:[b for b in bars(i["code"]) if b[0]<=day][-30:] for i in link_items},
                               "maxPremium": .07,
                               "execution": "次日盘中每10秒验证A涨幅0到9.9%、B涨幅-2%到7%，不满足继续等待。触发提交后等后续有效报价模拟成交，提交超60秒过期；T+1；买入遵守max_price和stop；不模拟涨停排队",
-                              "relationshipQuality": "同一正式行业、A板数高于B，仅弱关联，非已验证带动关系"}
+                              "relationshipQuality": "同一正式行业、A板数高于B，仅弱关联，非已验证带动关系",
+                              "divergenceRules":"source=涨停后分歧的候选使用独立evidence，不套用连板概率。entry.eligible=false只能watch；buy须max_price>=triggerPrice且<=maxPrice，stop>=结构stop。次一交易日突破分歧日高点且至少2个行业样本股转强才提交；跌破失效位取消。缠论与威科夫证据分开，不得把未确认写成已确认"}
                 link_plan = (decision_fn or decide)(link_input)
+                for action in link_plan["actions"]:
+                    selected = next((i for i in link_items if i["code"] == action["code"]), {})
+                    action["source"] = selected.get("source", "连板联动")
                 link_orders = orders_from(link_plan, link_account, link_items, day, .07)
                 for order in link_orders:
                     if order["action"] == "buy":
-                        order["linkage"] = next(r for r in relations if r["follower"] == order["code"])
+                        item = next(i for i in link_items if i["code"] == order["code"])
+                        if item.get("source") == "涨停后分歧":
+                            order["conditions"] = condition(item, order, day)
+                            order["source"] = "涨停后分歧"
+                        else:
+                            order["linkage"] = next(r for r in relations if r["follower"] == order["code"])
                 link_account["orders"].extend(link_orders)
                 for code, pos in link_account["positions"].items():
                     if pos["mark"] <= pos["stop"] and not any(o["code"] == code for o in link_account["orders"]):
