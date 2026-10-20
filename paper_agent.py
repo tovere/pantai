@@ -408,6 +408,8 @@ def _run_impl(payload=None, decision_fn=None, force=False):
                         link_account["orders"].append({"code":code,"name":pos["name"],"action":"sell","date":day,"reason":"联动账户收盘止损"})
                 linkage_record = {"input": link_input, "plan": link_plan}
             except (ValueError, RuntimeError) as exc:
+                if previous:
+                    raise ValueError("联动账户重算失败，保留原报告和订单：" + str(exc)) from None
                 linkage_record = {"error": str(exc)}
             record = {"linkage": linkage_record, "date": day, "version": VERSION, "input": context, "plan": plan,
                       "generatedAt": now().isoformat()}
