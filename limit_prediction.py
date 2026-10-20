@@ -75,6 +75,8 @@ def build():
                 "openPremium": round((stock["O"][ni] / stock["C"][i] - 1) * 100, 2) if ni is not None else None,
                 "openBuyable": not cycle.is_limit_up(stock["code"], stock["C"][i], stock["O"][ni]) if ni is not None else None,
             })
+    from limit_context import estimate, compare, grouped
+    markets = {m["date"]: m for m in days}
     history, predictions = [], []
     for day in calendar:
         # Only labels observable by today's close enter training.
@@ -90,7 +92,11 @@ def build():
             probability = (sum(r["continued"] for r in peers) + 30 * base) / (n + 30) if base is not None and n >= 50 else None
             predictions.append({**row, "date": day, "probability": round(probability * 100, 1) if probability is not None else None,
                                 "samples": n, "baseline": round(base * 100, 1) if base is not None else None})
-        history.extend(records[day])
+        context_groups = grouped(eligible, markets)
+        for row in predictions[-len(records[day]):] if records[day] else []:
+            value, count = estimate(row, markets[day], eligible, markets, row["probability"]/100 if row["probability"] is not None else None, context_groups)
+            row.update(contextProbability=value, contextSamples=count)
+        history.extend([{**r, "date": day} for r in records[day]])
     scored = [r for r in predictions if r["probability"] is not None and r["continued"] is not None and r["kind"] == "sealed"]
     bins = []
     for low in range(0, 100, 10):
@@ -114,7 +120,7 @@ def build():
                              "avgNextReturn": round(sum(r["nextReturn"] for r in subset)/len(subset),2)})
     latest = calendar[-1]
     result = {"date": latest, "generatedAt": datetime.now(timezone(timedelta(hours=8))).isoformat(),
-              "priceBasis": "none" if raw.exists() else "forward", "version": "daily-baseline-v2", "market": days[-1],
+              "comparison": compare(predictions), "priceBasis": "none" if raw.exists() else "forward", "version": "daily-baseline-v2", "market": days[-1],
               "items": sorted([r for r in predictions if r["date"] == latest], key=lambda r: -(r["probability"] or -1)),
               "outcomes": outcomes, "outcomeDefinition": "体面率=次日最高价≥信号日收盘价×1.02；红盘率=次日收盘高于信号收盘；低开=≤-3%；负反馈=收盘≤-5%；价格机会非成交收益", "calibration": bins, "history": predictions[-500:],
               "warnings": ["本地前复权日线推算涨停，非交易所精确涨停价；历史ST和上市状态未完整还原。",
@@ -139,7 +145,8 @@ def build():
             peers = [r for r in eligible if min(r["height"],4) == min(height,4)]
             n = len(peers)
             probability = (sum(r["continued"] for r in peers)+30*base)/(n+30) if n>=50 and base is not None else None
-            current.append({"code":code, "name":item.get("name"), "height":height,
+            context_probability, context_samples = estimate({"height": height}, markets[latest], eligible, markets, probability)
+            current.append({"contextProbability":context_probability, "contextSamples":context_samples, "phase": markets[latest]["phase_cn"], "spaceHeight":markets[latest]["max_height"], "code":code, "name":item.get("name"), "height":height,
                             "close":item.get("last_price"), "date":latest,
                             "probability":round(probability*100,1) if probability is not None else None,
                             "samples":n, "baseline":round(base*100,1) if base is not None else None,

@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { requestClient } from '#/api/request';
 interface Prediction { code: string; height: number; close: number; probability: null | number; samples: number; baseline: null | number; date: string; continued: null | boolean }
-interface Result { outcomes?: {kind: string; group: string; samples: number; continued: number; touched: number; decent: number; redClose: number; gapDown: number; negative: number; avgNextReturn: number; start: string; end: string}[]; outcomeDefinition?: string; poolItems?: {ticker: string; name: string; continue_day_cnt: number; limit_up_reason: string; seal_money: number}[]; currentSectors?: {name: string; members: number; limitCount: number; limitPct: number; maxHeight: number}[]; stale?: boolean; poolDate?: string; status?: {running: boolean; error: string | null}; themes?: {theme: string; count: number; maxHeight: number}[]; date?: string; warnings: string[]; items: Prediction[]; calibration: {range: string; samples: number; predicted: number; actual: number}[]; history: Prediction[]; brier?: number }
+interface Result { comparison?: {samples: number; baselineBrier: number; contextBrier: number; features: string; note: string}; outcomes?: {kind: string; group: string; samples: number; continued: number; touched: number; decent: number; redClose: number; gapDown: number; negative: number; avgNextReturn: number; start: string; end: string}[]; outcomeDefinition?: string; poolItems?: {ticker: string; name: string; continue_day_cnt: number; limit_up_reason: string; seal_money: number}[]; currentSectors?: {name: string; members: number; limitCount: number; limitPct: number; maxHeight: number}[]; stale?: boolean; poolDate?: string; status?: {running: boolean; error: string | null}; themes?: {theme: string; count: number; maxHeight: number}[]; date?: string; warnings: string[]; items: Prediction[]; calibration: {range: string; samples: number; predicted: number; actual: number}[]; history: Prediction[]; brier?: number }
 const data = ref<Result>();
 const error = ref('');
 function formatSealMoney(value: null | number | undefined) {
@@ -35,6 +35,9 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
       <el-table :data="data.items">
         <el-table-column prop="name" label="名称" min-width="100" /><el-table-column label="封板时间"><template #default="{row}">{{ row.sealTime || '数据源未提供' }}</template></el-table-column><el-table-column label="封单金额"><template #default="{row}">{{ formatSealMoney(row.sealMoney) }}</template></el-table-column><el-table-column label="涨停原因" min-width="200"><template #default="{row}">{{ row.reason || '数据源未提供' }}</template></el-table-column>
         <el-table-column prop="code" label="代码" /><el-table-column prop="height" label="当前板数" /><el-table-column prop="close" label="收盘价" />
+        <el-table-column prop="phase" label="情绪阶段" /><el-table-column prop="spaceHeight" label="市场空间板" />
+        <el-table-column label="情绪高度概率"><template #default="{row}">{{ row.contextProbability == null ? '条件样本不足' : row.contextProbability + '%' }}</template></el-table-column>
+        <el-table-column prop="contextSamples" label="情绪高度样本" />
         <el-table-column label="同板数次日连板概率"><template #default="{row}">{{ row.probability == null ? '样本不足' : row.probability + '%' }}</template></el-table-column>
         <el-table-column prop="samples" label="历史同组样本" /><el-table-column prop="baseline" label="全样本基准(%，各股共用)" />
       </el-table>
@@ -55,6 +58,8 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
         <el-table-column prop="gapDown" label="低开≤-3%(%)" /><el-table-column prop="negative" label="收盘≤-5%(%)" />
         <el-table-column prop="avgNextReturn" label="平均次日涨跌(%)" />
       </el-table>
+      <h3>情绪＋高度模型对照</h3>
+      <template v-if="data.comparison"><p>相同样本 {{ data.comparison.samples }} 条 · 板数基线 Brier {{ data.comparison.baselineBrier }} · 情绪高度 Brier {{ data.comparison.contextBrier }}（越低越好）</p><p>{{ data.comparison.features }}</p><p>{{ data.comparison.note }}</p></template>
       <h3>按时间向前预测的概率校准</h3>
       <el-table :data="data.calibration"><el-table-column prop="range" label="概率分组" /><el-table-column prop="samples" label="样本数" /><el-table-column prop="predicted" label="平均预测(%)" /><el-table-column prop="actual" label="实际晋级(%)" /></el-table>
     </template>
