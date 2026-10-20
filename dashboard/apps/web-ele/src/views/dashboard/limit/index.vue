@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { requestClient } from '#/api/request';
 interface Prediction { code: string; height: number; close: number; probability: null | number; samples: number; baseline: null | number; date: string; continued: null | boolean }
-interface Result { comparison?: {samples: number; baselineBrier: number; contextBrier: number; features: string; note: string}; outcomes?: {kind: string; group: string; samples: number; continued: number; touched: number; decent: number; redClose: number; gapDown: number; negative: number; avgNextReturn: number; start: string; end: string}[]; outcomeDefinition?: string; poolItems?: {ticker: string; name: string; continue_day_cnt: number; limit_up_reason: string; seal_money: number}[]; currentSectors?: {name: string; members: number; limitCount: number; limitPct: number; maxHeight: number}[]; stale?: boolean; poolDate?: string; status?: {running: boolean; error: string | null}; themes?: {theme: string; count: number; maxHeight: number}[]; date?: string; warnings: string[]; items: Prediction[]; calibration: {range: string; samples: number; predicted: number; actual: number}[]; history: Prediction[]; brier?: number }
+interface Result { generatedAt?: string; poolCapturedAt?: string; brokenCapturedAt?: string; brokenDate?: string; brokenItems?: {ticker: string; name: string; last_price: number; price_change_ratio_pct: number; open_times: number}[]; comparison?: {samples: number; baselineBrier: number; contextBrier: number; features: string; note: string}; outcomes?: {kind: string; group: string; samples: number; continued: number; touched: number; decent: number; redClose: number; gapDown: number; negative: number; avgNextReturn: number; start: string; end: string}[]; outcomeDefinition?: string; poolItems?: {ticker: string; name: string; continue_day_cnt: number; limit_up_reason: string; seal_money: number}[]; currentSectors?: {name: string; members: number; limitCount: number; limitPct: number; maxHeight: number}[]; stale?: boolean; poolDate?: string; status?: {running: boolean; error: string | null}; themes?: {theme: string; count: number; maxHeight: number}[]; date?: string; warnings: string[]; items: Prediction[]; calibration: {range: string; samples: number; predicted: number; actual: number}[]; history: Prediction[]; brier?: number }
 const data = ref<Result>();
 const error = ref('');
 function formatSealMoney(value: null | number | undefined) {
@@ -30,6 +30,7 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
     <el-alert v-if="error" :title="error" type="error" />
     <template v-if="data">
       <el-alert v-if="data.status?.error" :title="data.status.error" type="error" />
+      <p>交易时段每5分钟自动采集分析，页面每15秒同步 · 最近分析 {{ data.generatedAt || '—' }} · 涨停池采集 {{ data.poolCapturedAt || '—' }}</p>
       <p>数据日期 {{ data.date || '—' }} · Brier {{ data.brier ?? '—' }}（越低越好）</p>
       <p>候选以同日真实涨停池为准；概率是同连板高度历史组统计，同组相同，不是个股独立预测。</p>
       <el-table :data="data.items">
@@ -43,6 +44,9 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
       </el-table>
       <h3>当日涨停池 {{ data.poolDate }}（独立于历史概率日期）</h3>
       <el-table :data="data.poolItems || []" max-height="400"><el-table-column prop="ticker" label="代码" /><el-table-column prop="name" label="名称" /><el-table-column prop="continue_day_cnt" label="板数" /><el-table-column label="封单金额"><template #default="{row}">{{ formatSealMoney(row.seal_money) }}</template></el-table-column><el-table-column prop="limit_up_reason" label="原因" min-width="240" /></el-table>
+      <h3>当日炸板池 {{ data.brokenDate || '—' }}</h3>
+      <p>采集时间 {{ data.brokenCapturedAt || '尚未成功采集' }} · 曾触及涨停后开板，以数据源当前名单为准；回封后可能移出。炸板票次日表现见下方独立回测。</p>
+      <el-table :data="data.brokenItems || []" max-height="400"><el-table-column prop="ticker" label="代码" /><el-table-column prop="name" label="名称" /><el-table-column prop="last_price" label="最新价" /><el-table-column prop="price_change_ratio_pct" label="涨跌幅(%)" /><el-table-column prop="open_times" label="开板次数" /></el-table>
       <h3>当日正式行业成分聚合（不回填历史）</h3>
       <el-table :data="data.currentSectors || []"><el-table-column prop="name" label="行业" /><el-table-column prop="members" label="成分数量" /><el-table-column prop="limitCount" label="涨停数量" /><el-table-column prop="limitPct" label="涨停占比(%)" /><el-table-column prop="maxHeight" label="最高板" /></el-table>
       <h3>涨停原因聚合（非正式板块成分）</h3>

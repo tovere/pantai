@@ -251,7 +251,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 limit_prediction.STATUS.update(running=True, error=None)
                 try:
-                    completed = subprocess.run([os.sys.executable, str(HERE / "limit_prediction.py"), "--refresh"], cwd=HERE, check=False)
+                    completed = subprocess.run([os.sys.executable, os.path.join(HERE, "limit_prediction.py"), "--refresh"], cwd=HERE, check=False)
                     if completed.returncode:
                         limit_prediction.STATUS["error"] = "分析失败，保留上次结果"
                 finally:

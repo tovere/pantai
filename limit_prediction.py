@@ -184,6 +184,12 @@ def load():
     today = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
     path = DIR / (today + ".json")
     live = {"poolDate": today, "poolItems": json.loads(path.read_text())["items"], "currentSectors": aggregate(today)} if path.exists() else {}
+    broken_path = DIR / (today + "-broken.json")
+    broken = json.loads(broken_path.read_text()) if broken_path.exists() else None
+    if broken:
+        live.update(brokenItems=broken["items"], brokenCapturedAt=broken["capturedAt"], brokenDate=broken["date"])
+    if path.exists():
+        live["poolCapturedAt"] = json.loads(path.read_text()).get("capturedAt")
     return {**json.loads(OUT.read_text()), "status": dict(STATUS), **live} if OUT.exists() else {"items": [], "warnings": ["尚未生成，请先运行分析"], "calibration": [], "history": []}
 
 
@@ -200,6 +206,10 @@ def run():
             capture()
         except Exception:
             STATUS["error"] = "涨停池获取失败，保留本地数据；封单与题材可能缺失"
+        try:
+            fetch(today, broken=True)
+        except Exception:
+            STATUS["error"] = "炸板池获取失败，保留上次快照，请检查采集时间"
         build()
     except Exception as exc:
         STATUS["error"] = str(exc) if isinstance(exc, ValueError) else "本地连板分析失败"
@@ -210,12 +220,23 @@ def run():
 
 def daily_loop():
     done = ""
+    last_attempt = None
     while True:
         stamp = datetime.now(timezone(timedelta(hours=8)))
         day = stamp.strftime("%Y-%m-%d")
-        if stamp.weekday() < 5 and stamp.hour >= 16 and done != day:
-            run()
-            done = day
+        clock = stamp.strftime("%H:%M")
+        intraday = "09:30" <= clock < "11:30" or "13:00" <= clock < "15:00"
+        if stamp.weekday() < 5 and not STATUS["running"]:
+            if intraday and (last_attempt is None or time.monotonic()-last_attempt >= 300):
+                last_attempt = time.monotonic()
+                run()
+            elif stamp.hour >= 16 and done != day:
+                run()
+                if not STATUS["error"]:
+                    done = day
+                else:
+                    # Bound retry frequency when the provider is unavailable.
+                    time.sleep(240)
         time.sleep(60)
 
 

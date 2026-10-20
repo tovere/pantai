@@ -9,11 +9,11 @@ DIR = Path(__file__).resolve().parent / "data_cache" / "limit_pools"
 TZ = timezone(timedelta(hours=8))
 
 
-def fetch(day):
+def fetch(day, broken=False):
     date = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=TZ)
     items, page = [], 1
     while True:
-        data = get("/api/a-share/special-data/limit-up-pool",
+        data = get("/api/a-share/special-data/" + ("limit-break-pool" if broken else "limit-up-pool"),
                    {"date_ms": int(date.timestamp()*1000), "page": page, "size": 200})
         items.extend(data.get("item") or [])
         if page >= data.get("pagination", {}).get("pages", 1):
@@ -22,9 +22,9 @@ def fetch(day):
         if page > 30:
             raise ValueError("涨停池分页异常，拒绝保存不完整结果")
     result = {"date": day, "capturedAt": datetime.now(TZ).isoformat(),
-              "source": "hithink-limit-up-pool", "items": items}
+              "source": "hithink-limit-break-pool" if broken else "hithink-limit-up-pool", "items": items}
     DIR.mkdir(parents=True, exist_ok=True)
-    path = DIR / (day + ".json")
+    path = DIR / (day + ("-broken.json" if broken else ".json"))
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(result, ensure_ascii=False))
     tmp.replace(path)
