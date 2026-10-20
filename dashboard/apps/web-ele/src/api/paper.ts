@@ -6,7 +6,7 @@ export interface PaperAccount { cash: number; equity: number; returnPct: number;
 export interface PaperSummary {
   accounts: Record<string, PaperAccount>;
   status: {running: boolean; error: null | string; message?: string};
-  decisions: {date: string; plan: {review: string; model?: string; actions: PaperOrder[]}}[];
+  decisions: {date: string; linkage?: {error?: string; plan?: {review: string; actions: PaperOrder[]}}; plan: {review: string; model?: string; actions: PaperOrder[]}}[];
   rules: string;
 }
 export const getPaperSummary = () => requestClient.get<PaperSummary>('/paper/summary');

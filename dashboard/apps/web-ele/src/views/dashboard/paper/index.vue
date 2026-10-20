@@ -8,7 +8,7 @@ const data = ref<PaperSummary>();
 const error = ref('');
 const submitting = ref(false);
 const account = ref('agent');
-const names: Record<string, string> = { agent: 'Agent 自主账户', rules: '固定规则账户', benchmark: '20% ETF 基准' };
+const names: Record<string, string> = { linkage: '连板/联动账户', agent: 'Agent 自主账户', rules: '固定规则账户', benchmark: '20% ETF 基准' };
 let timer: ReturnType<typeof setTimeout> | undefined;
 let stopped = false;
 async function refresh() {
@@ -62,7 +62,9 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
         </el-tab-pane>
       </el-tabs>
       <el-card shadow="never"><h3>每日决策复盘</h3><el-empty v-if="!data.decisions.length" description="尚无决策，等待当日完整收盘快照" />
-        <section v-for="d in data.decisions" :key="d.date"><h4>{{ d.date }} · {{ d.plan.model }}</h4><p>{{ d.plan.review }}</p>
+        <section v-for="d in data.decisions" :key="d.date"><h4>{{ d.date }} · {{ d.plan.model }}</h4>
+          <template v-if="d.linkage"><h4>连板/联动账户</h4><p>{{ d.linkage.error || d.linkage.plan?.review }}</p>
+          <el-table :data="d.linkage.plan?.actions || []"><el-table-column prop="code" label="代码" /><el-table-column prop="action" label="操作" /><el-table-column prop="reason" label="A/B联动依据" min-width="280" /></el-table></template><p>{{ d.plan.review }}</p>
           <el-table :data="d.plan.actions"><el-table-column prop="code" label="代码" /><el-table-column prop="action" label="操作" /><el-table-column prop="reason" label="判断依据与退出条件" min-width="300" /></el-table>
         </section>
       </el-card>

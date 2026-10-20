@@ -72,7 +72,9 @@ def initial_state():
 
 def load(conn):
     row = conn.execute("SELECT body FROM state WHERE id=1").fetchone()
-    return json.loads(row[0]) if row else initial_state()
+    state = json.loads(row[0]) if row else initial_state()
+    state["accounts"].setdefault("linkage", {"cash": INITIAL, "positions": {}, "orders": [], "curve": [], "trades": []})
+    return state
 
 
 def bars(code):
@@ -110,11 +112,16 @@ def settle(account, day):
         pos = account["positions"].get(order["code"])
         price = bar[1] * (1.001 if order["action"] == "buy" else .999)
         # Restrict first version to ordinary main-board stocks and ETFs.
-        # Reject large gaps conservatively; no assumption of fills at a limit.
+        # No fixed gap cutoff. Plans set limits; locked limits are not assumed executable.
         if not previous or bar[5] <= 0:
             reason = "无有效前收盘或停牌"
-        elif abs(bar[1] / previous[-1][2] - 1) >= .045:
-            reason = "开盘跳空达到保守阈值，放弃成交"
+        elif order["action"] == "buy" and bar[1] >= round(previous[-1][2]*1.1,2)-.01:
+            reason = "开盘封涨停，不能假定买入成交"
+        elif order["action"] == "sell" and bar[1] <= round(previous[-1][2]*.9,2)+.01:
+            pending.append(order)
+            continue
+        elif order.get("linkage") and __import__("paper_linkage").check(order, bar[0], bars):
+            reason = __import__("paper_linkage").check(order, bar[0], bars)
         elif order["action"] == "buy":
             if pos or len(account["positions"]) >= 5 or (price > order["max_price"] or price <= order.get("stop", 0)):
                 reason = "持仓上限、重复持仓或超过限价"
@@ -223,7 +230,7 @@ buy必须给出低于当前价的正数stop，以及不高于当前价1.03倍的
     return plan
 
 
-def orders_from(plan, account, items, day):
+def orders_from(plan, account, items, day, max_premium=.03):
     if not isinstance(plan.get("review"), str) or not isinstance(plan.get("actions"), list):
         raise ValueError("模型计划结构不正确")
     lookup = {c["code"]: c for c in items}
@@ -255,7 +262,7 @@ def orders_from(plan, account, items, day):
             if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in values):
                 raise ValueError("无效数值")
             weight, stop, limit = values
-            if not (0 < weight <= .2 and 0 < stop < item["close"] and stop < limit <= item["close"] * 1.03):
+            if not (0 < weight <= .2 and 0 < stop < item["close"] and stop < limit <= item["close"] * (1 + max_premium)):
                 raise ValueError("买入超出风险限制")
         name = lookup.get(code, account["positions"].get(code, {})).get("name", code)
         if any(o["code"] == code for o in account["orders"]):
@@ -335,7 +342,27 @@ def _run_impl(payload=None, decision_fn=None):
                 benchmark["orders"] = [{"code": "510300", "name": "沪深300ETF", "action": "buy",
                                          "date": day, "weight": .2, "stop": 0,
                                          "max_price": price * 1.03, "reason": "20%基准ETF+80%现金"}]
-            record = {"date": day, "version": VERSION, "input": context, "plan": plan,
+            linkage_record = None
+            try:
+                from paper_linkage import prepare
+                link_items, relations, market = prepare(day)
+                link_account = state["accounts"]["linkage"]
+                link_input = {"date": day, "account": json.loads(json.dumps(link_account)),
+                              "candidates": link_items, "relationships": relations, "market": market,
+                              "execution": "看A做B：只做提供的follower；次日开盘验证A>=0且<9.9%，B在-2%到+7%；不满足取消；不是盘中追板"}
+                link_plan = (decision_fn or decide)(link_input)
+                link_orders = orders_from(link_plan, link_account, link_items, day, .07)
+                for order in link_orders:
+                    if order["action"] == "buy":
+                        order["linkage"] = next(r for r in relations if r["follower"] == order["code"])
+                link_account["orders"].extend(link_orders)
+                for code, pos in link_account["positions"].items():
+                    if pos["mark"] <= pos["stop"] and not any(o["code"] == code for o in link_account["orders"]):
+                        link_account["orders"].append({"code":code,"name":pos["name"],"action":"sell","date":day,"reason":"联动账户收盘止损"})
+                linkage_record = {"input": link_input, "plan": link_plan}
+            except (ValueError, RuntimeError) as exc:
+                linkage_record = {"error": str(exc)}
+            record = {"linkage": linkage_record, "date": day, "version": VERSION, "input": context, "plan": plan,
                       "generatedAt": now().isoformat()}
             conn.execute("INSERT INTO decisions VALUES (?,?)", (day, json.dumps(record, ensure_ascii=False)))
             conn.execute("INSERT OR REPLACE INTO state VALUES (1,?)", (json.dumps(state, ensure_ascii=False),))
@@ -370,8 +397,8 @@ def summary():
             peak = max(peak, point["equity"])
             drawdown = max(drawdown, 1 - point["equity"] / peak)
         account["drawdownPct"] = round(drawdown * 100, 2)
-    return {**state, "failures": failures, "decisions": [{"date": d["date"], "plan": d["plan"]} for d in decisions],
-            "status": dict(STATUS), "rules": "收盘决策/后续开盘成交；0.1%滑点；每边0.1%费用最低5元；跳空≥4.5%不成交；仅主板普通股及ETF；前复权数据估算；基准20%ETF+80%现金"}
+    return {**state, "failures": failures, "decisions": [{"date": d["date"], "plan": d["plan"], "linkage": d.get("linkage")} for d in decisions],
+            "status": dict(STATUS), "rules": "收盘决策/后续开盘成交；0.1%滑点；每边0.1%费用最低5元；取消4.5%跳空限制，买入按限价/止损校验；开盘封涨停不假定成交，跌停卖单顺延；仅主板普通股及ETF；前复权数据估算；基准20%ETF+80%现金"}
 
 
 def daily_loop():

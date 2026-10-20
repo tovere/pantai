@@ -5,7 +5,7 @@ import type { PaperAccount } from '#/api/paper';
 const props = defineProps<{ accounts: Record<string, PaperAccount> }>();
 const chart = ref<EchartsUIType>();
 const { renderEcharts } = useEcharts(chart);
-const labels: Record<string, string> = { agent: 'Agent', rules: '固定规则', benchmark: '20% ETF + 80%现金' };
+const labels: Record<string, string> = { linkage: '连板/联动账户', agent: 'Agent', rules: '固定规则', benchmark: '20% ETF + 80%现金' };
 function paint() {
   const dates = [...new Set(Object.values(props.accounts).flatMap(a => a.curve.map(p => p.date)))].sort();
   renderEcharts({
