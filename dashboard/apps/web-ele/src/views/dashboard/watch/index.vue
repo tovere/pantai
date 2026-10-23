@@ -142,7 +142,15 @@ onUnmounted(() => { disposed = true; clearTimeout(timer); });
             size="small"
             effect="light"
           >
-            {{ data?.closed ? '收盘定论' : '盘中快照' }}
+            {{ data?.closed ? '收盘定论' : '盘中预览' }}
+          </el-tag>
+          <el-tag
+            v-if="data?.frozenDate"
+            type="success"
+            size="small"
+            effect="plain"
+          >
+            已锁收盘 {{ data.frozenDate }}
           </el-tag>
           <span class="dim">生成于 {{ data?.generatedAt || '-' }}</span>
         </div>
@@ -210,13 +218,13 @@ onUnmounted(() => { disposed = true; clearTimeout(timer); });
               重跑本策略
             </el-button>
             <span v-if="sec.btNote" class="bt-note"
-              >📊 回测 {{ sec.btNote }}</span
+              >回测 {{ sec.btNote }}</span
             >
             <span v-if="sec.gradeBtNote" class="grade-bt-note">
-              🎯 评级回测 {{ sec.gradeBtNote }}
+              ABC {{ sec.gradeBtNote }}
             </span>
             <span v-if="sec.conclusionNote" class="conclusion-note">
-              结论：{{ sec.conclusionNote }}
+              用法 {{ sec.conclusionNote }}
             </span>
             <span v-if="jobOf(sec.key)" class="job-meta">
               <template v-if="jobOf(sec.key)!.status === 'running'">

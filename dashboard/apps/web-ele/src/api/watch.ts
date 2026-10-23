@@ -90,6 +90,31 @@ export interface WatchHit {
   reversal?: number;
   /** 总市值(亿元) */
   mktcap?: number;
+  // 策略十二(全A主板连小阳)字段
+  streak?: number;
+  yang_n?: number;
+  small_n?: number;
+  net?: number;
+  avg_chg?: number;
+  avg_body?: number;
+  max_chg?: number;
+  win_low?: number;
+  vol_base?: number;
+  window?: number;
+  above_ma20?: number;
+  dist_ma20?: number;
+  tier?: number;
+  // 策略十四(底部放量第一根大阳)字段
+  body?: number;
+  pos60?: number;
+  base_low?: number;
+  sig_low?: number;
+  // 策略十五(昨大涨今缩量回踩)
+  prev_chg?: number;
+  prev_close?: number;
+  prev_low?: number;
+  prev_high?: number;
+  limit?: number;
 }
 
 export interface WatchSection {
@@ -110,6 +135,8 @@ export interface WatchData {
   screenDate: string;
   latestBar: string;
   closed: boolean;
+  frozenDate?: string;
+  frozenAt?: string;
   summary: { total: number; gradeA: number; gradeB: number };
   sections: WatchSection[];
 }
@@ -117,7 +144,7 @@ export interface WatchData {
 export interface WatchJob {
   key: string;
   label: string;
-  kind: 'cache' | 'variant';
+  kind: 'auction' | 'cache' | 'variant';
   mode?: 'fast' | 'full';
   status: 'done' | 'error' | 'idle' | 'running';
   done: number;
@@ -209,4 +236,107 @@ export async function getHistoryListApi() {
 /** 某日命中快照 */
 export async function getHistoryDayApi(date: string) {
   return requestClient.get<HistoryDay>(`/watch/history?date=${date}`);
+}
+
+export type AuctionAction = 'buy' | 'skip' | 'watch';
+
+export type AuctionSettleTag =
+  | '竞价中'
+  | '无对照'
+  | '平稳撮合'
+  | '尾盘放量'
+  | '尾盘抢筹'
+  | '尾盘砸盘'
+  | '尾盘翻多'
+  | '尾盘翻空';
+
+export type AuctionTag =
+  | '均衡'
+  | '放量'
+  | '无数据'
+  | '无竞价'
+  | '抢筹'
+  | '抛压'
+  | '真空';
+
+export interface AuctionOpenItem {
+  action: AuctionAction;
+  auction_amount?: null | number;
+  auction_pct?: null | number;
+  auction_price?: null | number;
+  auction_strength?: null | number;
+  auction_tag?: AuctionTag | string;
+  auction_turnover_pct?: null | number;
+  auction_unmatched?: null | number;
+  auction_volume?: null | number;
+  auction_volume_ratio?: null | number;
+  auction_yesterday_ratio_pct?: null | number;
+  close?: null | number;
+  close_pct?: null | number;
+  close_price?: null | number;
+  code: string;
+  grade: 'A' | 'B' | 'C' | 'D';
+  gradeNote?: string;
+  industry?: string;
+  is_etf: boolean;
+  last_price?: null | number;
+  name: string;
+  open_pct?: null | number;
+  open_price?: null | number;
+  prev_price?: null | number;
+  pre_settle_at?: null | string;
+  price_delta?: null | number;
+  reason: string;
+  ref_price?: null | number;
+  section_keys: string[];
+  settle_strength?: null | number;
+  settle_tag?: AuctionSettleTag | string;
+  stop?: null | number;
+  strategies: string[];
+  thscode: string;
+  unmatched_delta?: null | number;
+  unmatched_ratio?: null | number;
+  vol_delta?: null | number;
+  vol_delta_pct?: null | number;
+}
+
+export interface AuctionOpenData {
+  auctionMeta?: Record<string, unknown>;
+  benchmark?: null | {
+    count: number;
+    date?: string;
+    item: {
+      auction_pct?: number;
+      name?: string;
+      tags?: string[];
+      thscode?: string;
+      ticker?: string;
+    }[];
+  };
+  error?: null | string;
+  frozenDate?: string;
+  generatedAt: string;
+  items: AuctionOpenItem[];
+  latestBar?: string;
+  note?: string;
+  preSettleAt?: null | string;
+  screenDate: string;
+  stage: 'final' | 'live' | 'watch';
+  summary: { buy: number; skip: number; total: number; watch: number };
+  tapeDate?: string;
+  tapeTicks?: number;
+  watchFrozen?: boolean;
+  watchSkipped?: string;
+  watchSource?: string;
+  watchSourceLabel?: string;
+}
+
+export async function getAuctionOpenApi() {
+  return requestClient.get<AuctionOpenData>('/auction/open');
+}
+
+export async function runAuctionOpenApi(stage: 'final' | 'live' | 'watch' = 'final') {
+  return requestClient.post<{ stage: string; started: string }>(
+    `/auction/run?stage=${stage}`,
+  );
 }

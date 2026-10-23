@@ -16,6 +16,9 @@ const isS8 = computed(() => props.section.strategy === 'nzi_reversal');
 const isS9 = computed(() => props.section.strategy === 'strategy9_distilled');
 const isS10 = computed(() => props.section.strategy === 'chan_final');
 const isS11 = computed(() => props.section.strategy === 'vdb_pullback');
+const isS12 = computed(() => props.section.strategy === 'csi2000_small_yang');
+const isS14 = computed(() => props.section.strategy === 'bottom_vol_yang');
+const isS15 = computed(() => props.section.strategy === 'limit_shrink_pull');
 
 const GRADE_TYPE: Record<WatchHit['grade'], TagType> = {
   A: 'success',
@@ -75,7 +78,11 @@ function flagType(type: WatchFlag['type']): TagType {
             </el-tag>
             <span>{{ row.gradeNote }}</span>
           </div>
-          <KlineChart :bars="row.bars" :levels="row.levels" />
+          <KlineChart
+            :key="`${row.code}-${row.bars?.at(-1)?.[0] || ''}`"
+            :bars="row.bars"
+            :levels="row.levels"
+          />
         </div>
       </template>
     </el-table-column>
@@ -261,6 +268,85 @@ function flagType(type: WatchFlag['type']): TagType {
       </el-table-column>
       <el-table-column label="市值(亿)" width="78" align="right">
         <template #default="{ row }">{{ fmt(row.mktcap, 0) }}</template>
+      </el-table-column>
+    </template>
+
+    <!-- 策略十二 列(全A主板连小阳) -->
+    <template v-else-if="isS12">
+      <el-table-column label="连阳" width="56" align="center" prop="streak" />
+      <el-table-column label="阳/小阳" width="72" align="center">
+        <template #default="{ row }">{{ row.yang_n }}/{{ row.small_n }}</template>
+      </el-table-column>
+      <el-table-column label="窗口%" width="72" align="right">
+        <template #default="{ row }">
+          <span :class="chgClass(row.net)">{{ sign(row.net) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="20日%" width="72" align="right">
+        <template #default="{ row }">
+          <span :class="chgClass(row.ret20 ?? 0)">{{ sign(row.ret20) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="均涨%" width="66" align="right">
+        <template #default="{ row }">{{ sign(row.avg_chg) }}</template>
+      </el-table-column>
+      <el-table-column label="量比" width="60" align="right">
+        <template #default="{ row }">{{ fmt(row.vol_ratio) }}x</template>
+      </el-table-column>
+      <el-table-column label="窗低" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.win_low) }}</template>
+      </el-table-column>
+      <el-table-column label="止损" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.stop) }}</template>
+      </el-table-column>
+    </template>
+
+    <!-- 策略十四 列(底部放量第一根大阳) -->
+    <template v-else-if="isS14">
+      <el-table-column label="量比" width="60" align="right">
+        <template #default="{ row }">{{ fmt(row.vol_ratio) }}x</template>
+      </el-table-column>
+      <el-table-column label="实体%" width="66" align="right">
+        <template #default="{ row }">{{ fmt(row.body) }}</template>
+      </el-table-column>
+      <el-table-column label="前20日%" width="78" align="right">
+        <template #default="{ row }">
+          <span :class="chgClass(row.ret20 ?? 0)">{{ sign(row.ret20) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="位60%" width="66" align="right">
+        <template #default="{ row }">{{ fmt(row.pos60, 0) }}</template>
+      </el-table-column>
+      <el-table-column label="乖离60" width="72" align="right">
+        <template #default="{ row }">
+          <span :class="chgClass(row.bias60 ?? 0)">{{ sign(row.bias60) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="底盘低" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.base_low) }}</template>
+      </el-table-column>
+      <el-table-column label="止损" width="72" align="right">
+        <template #default="{ row }">{{ fmt(row.stop) }}</template>
+      </el-table-column>
+    </template>
+
+    <!-- 策略十五 列(昨大涨今缩量回踩) -->
+    <template v-else-if="isS15">
+      <el-table-column label="昨涨%" width="72" align="right">
+        <template #default="{ row }">
+          <span :class="chgClass(row.prev_chg ?? 0)">{{ sign(row.prev_chg) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="今%" width="66" align="right">
+        <template #default="{ row }">
+          <span :class="chgClass(row.chg)">{{ sign(row.chg) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="缩量" width="64" align="right">
+        <template #default="{ row }">{{ fmt(row.vol_shrink, 2) }}x</template>
+      </el-table-column>
+      <el-table-column label="昨低/止损" width="88" align="right">
+        <template #default="{ row }">{{ fmt(row.stop) }}</template>
       </el-table-column>
     </template>
 

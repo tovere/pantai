@@ -23,7 +23,13 @@ import watch_grade
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_PATH = os.path.join(HERE, "watch_data.json")
 HIST_DIR = os.path.join(HERE, "data_cache", "watch_history")
+OVERNIGHT_PATH = os.path.join(HERE, "data_cache", "watch_overnight.json")
 INDUSTRY_PATH = os.path.join(HERE, "data_cache", "stock_industry.json")
+HIT_SNAPSHOT_KEYS = (
+    "code", "name", "grade", "close", "chg", "gradeNote",
+    "dist", "stage", "pull_days", "runup", "amt", "flags",
+    "prev_chg", "vol_shrink", "stop", "is_etf",
+)
 
 
 def now_bj():
@@ -53,11 +59,11 @@ VARIANTS = {
                         {"ENABLE_TYPES": "3", "WEEKLY_MODE": "ma", "SUB_LEVEL": "1",
                          "S10_STAGE1_ONLY": "1", "S10_MAX_LAG": "2", "S10_MAX_RISK": "12",
                          "S10_REQUIRE_UP": "1"}),
-    # ETF 版: 出场必须换成移动止损(实测 +1.42% vs 顶分型 +0.41%), 且只买第1个中枢
-    # (ETF 第2个中枢 -2.36%/23%胜, 由 watch_grade 直接判 D)。与策略五 ETF 结论一致。
+    # ETF: 首中枢保留; 放开 GG/30分以扩样本(304笔·58.2%/+2.63%)。
+    # 不破 GG 的仍由评级标 A(原225笔·63.6%/+3.11%); 破 GG 仅过 ZG 的降档。
     "s10_etf":         ("strategy_chan_final/screen.py", "策略十·ETF·缠论三买(移动止损)",
                         {"ETF_ONLY": "1", "ENABLE_TYPES": "3", "WEEKLY_MODE": "ma",
-                         "SUB_LEVEL": "1", "PULLBACK_GG": "1", "S10_STAGE1_ONLY": "1"}),
+                         "SUB_LEVEL": "0", "PULLBACK_GG": "0", "S10_STAGE1_ONLY": "1"}),
     "s11_vdb_strict":  ("screen_vdb_pullback.py",       "策略十一·VDB后缩量回踩·严格",
                         {"STRICT_BUY": "1", "MIN_MKTCAP": "10000000000",
                          "VDB_STRICT_SHRINK": "0.45", "VDB_STRICT_DIST": "6",
@@ -67,76 +73,105 @@ VARIANTS = {
                         {"STRICT_BUY": "0", "MIN_MKTCAP": "20000000000",
                          "VDB_SHRINK": "0.50", "VDB_LOOSE_DIST": "6",
                          "VDB_MIN_RET20": "0", "VDB_EXCLUDE_REV": "1"}),
+    "s12_small_yang":  ("screen_csi2000_small_yang.py", "策略十二·全A主板连小阳(全量)",
+                        {"YANG_TIER": "0"}),
+    "s12_small_yang_t2": ("screen_csi2000_small_yang.py", "策略十二·连小阳·2档(未涨透)",
+                        {"YANG_TIER": "2"}),
+    "s12_small_yang_t3": ("screen_csi2000_small_yang.py", "策略十二·连小阳·3档(温和未透)",
+                        {"YANG_TIER": "3"}),
+    "s14_bottom_vol_yang": ("screen_bottom_vol_yang.py", "策略十四·底部放量第一根大阳", {}),
+    "s15_limit_shrink_pull": ("screen_s15_limit_shrink_pull.py", "策略十五·昨大涨今缩量回踩", {}),
 }
 # 暂停展示/运行但保留配置与回测代码，移出集合即可恢复。
 DISABLED_VARIANTS = {"s6_stock", "s6_etf", "s8_stock", "s9_stock"}
-# 侧栏顺序对齐 readme 排名: 5ETF宽松 > 7 > 10个股 > 11严格/宽松 > 5ETF严格 > …
+# 侧栏按策略号分组: 同号内 ETF→个股、严格→宽松。优先级见 readme，不在此打乱。
 VKEYS_ORDER = [
+    "s5_etf_strict",
     "s5_etf_loose",
-    "s10_etf",
+    "s5_stock_strict",
+    "s5_stock_loose",
     "s7_stock",
+    "s10_etf",
     "s10_stock",
     "s11_vdb_strict",
     "s11_vdb",
-    "s5_etf_strict",
-    "s5_stock_strict",
-    "s5_stock_loose",
+    "s12_small_yang",
+    "s12_small_yang_t2",
+    "s12_small_yang_t3",
+    "s14_bottom_vol_yang",
+    "s15_limit_shrink_pull",
 ]
 VKEYS = [k for k in VKEYS_ORDER if k in VARIANTS and k not in DISABLED_VARIANTS]
 # 兜底: 未列入 ORDER 的启用变体仍挂在末尾
 VKEYS += [k for k in VARIANTS if k not in DISABLED_VARIANTS and k not in VKEYS]
 
-# 回测注解(日线口径, 数据见 README)。总胜率 / 启动几率 / 启动后胜率(策略6/7的
-# 启动模型口径; 策略5为顶分型/移动止损, 无"启动"概念只给总胜率+均值)。
+# 盯盘注解统一格式:
+#   BACKTEST:   {标签} · {N}笔 · {胜}%胜 · {均}%/笔 · {条件}
+#   GRADE:      A {胜}%[(n)]/{均}% · B … · C …[ · 备注]
+#   CONCLUSION: {怎么用}。{注意}
 BACKTEST_NOTE = {
-    "s5_stock_loose":  "调优·首中枢+距≤5+缩≤0.50+risk≤4+pull≥2+上涨市·959笔·49.4%胜·+1.51%(原10468笔39.7%/+0.65%)",
-    "s5_stock_strict": "调优·距≤6+缩≤0.60+risk≤5+上涨市·421笔·49.6%胜·+1.37%(原1161笔40.9%/+0.74%)",
-    "s5_etf_loose":    "日线·移动止损·全量2935笔·48.7%胜·+0.88%/笔",
-    "s5_etf_strict":   "日线·移动止损·全量471笔·48.8%胜·+0.75%/笔",
-    "s6_stock":        "全量4346笔·39.4%胜·-0.16%/笔；入口已暂停",
-    "s6_etf":          "ETF版仅调参样本，未完成多年分层验证；入口已暂停",
-    "s7_stock":        "全量3813笔·L2止损·涨6%后五日线保护·53.3%胜·+1.00%/笔",
-    "s11_vdb":         "调优·≥200亿·缩≤0.50+距≤6+ret20≥0+剔反转·703笔·54.1%胜·+2.23%(原1970笔46.9%/+1.46%)",
-    "s11_vdb_strict":  "调优·≥100亿·缩≤0.45+距≤6+pull2-4+ret20≥0+剔反转(不再强制破昨高)",
-    "s8_stock":        "全量1080笔·38.3%胜·+0.11%/笔；入口已暂停",
-    "s9_stock":        "全量7591笔·37.6%胜·-0.14%/笔；入口已暂停",
-    "s10_stock":       "调优·首中枢+lag≤2+risk≤12+上涨市·461笔·52.9%胜·+2.11%(原1229笔46.1%/+0.90%)",
-    "s10_etf":         "ETF·首中枢+回试不破GG+移动止损·225笔·63.6%胜·+3.11%/笔",
+    "s5_stock_loose":  "调优 · 959笔 · 49.4%胜 · +1.51%/笔 · 首中枢+距≤5+缩≤0.50+risk≤4+pull≥2+上涨市",
+    "s5_stock_strict": "调优 · 421笔 · 49.6%胜 · +1.37%/笔 · 距≤6+缩≤0.60+risk≤5+上涨市",
+    "s5_etf_loose":    "全量 · 2935笔 · 48.7%胜 · +0.88%/笔 · 日线移动止损",
+    "s5_etf_strict":   "全量 · 471笔 · 48.8%胜 · +0.75%/笔 · 日线移动止损+严格三买",
+    "s6_stock":        "暂停 · 4346笔 · 39.4%胜 · -0.16%/笔 · 压缩蓄势",
+    "s6_etf":          "暂停 · 样本不足 · 未分层验证 · ETF压缩蓄势",
+    "s7_stock":        "全量 · 3813笔 · 53.3%胜 · +1.00%/笔 · L2止损+涨6%后MA5保护",
+    "s8_stock":        "暂停 · 1080笔 · 38.3%胜 · +0.11%/笔 · N字反包",
+    "s9_stock":        "暂停 · 7591笔 · 37.6%胜 · -0.14%/笔 · 防守蒸馏",
+    "s10_stock":       "调优 · 461笔 · 52.9%胜 · +2.11%/笔 · 首中枢+lag≤2+risk≤12+上涨市",
+    "s10_etf":         "调优 · 304笔 · 58.2%胜 · +2.63%/笔 · 首中枢+移动止损(放宽GG/关30分)",
+    "s11_vdb":         "调优 · 703笔 · 54.1%胜 · +2.23%/笔 · ≥200亿+缩≤0.50+距≤6+ret20≥0+剔反转",
+    "s11_vdb_strict":  "调优 · 263笔 · 55.1%胜 · +1.45%/笔 · ≥100亿+缩≤0.45+距≤6+pull2-4+剔反转",
+    "s12_small_yang":  "全量 · 2296笔 · 61.3%胜 · +0.72%/笔 · 次日开盘买+放量≥2x窗均量跑+破窗低止损",
+    "s12_small_yang_t2": "调优 · 264笔 · 71.6%胜 · +1.87%/笔 · 窗涨≤8%+近20日跌+额0.3-1.2亿",
+    "s12_small_yang_t3": "调优 · 490笔 · 70.6%胜 · +1.49%/笔 · 窗涨≤8%+近20日<5%+额0.3-1.0亿",
+    "s14_bottom_vol_yang": "新策略 · 次日开盘买 · 大阳≥7%+量≥2x+底部第一根；待全量回测标定",
+    "s15_limit_shrink_pull": "调优 · 4108笔 · 56.4%胜 · -0.03%/笔 · 昨≥6+跌≥-3+缩≤0.80+额≥0.4；尾盘买",
 }
 
-# dashboard 当前 A/B/C/D 评级规则的一年期历史重放。括号内为样本数；策略十的
-# 一年历史分钟数据不足，因此这里是“不含30分共振”的日线基础评级。
 GRADE_BACKTEST_NOTE = {
-    "s5_stock_loose":  "调优池959笔 ABC胜率 A52.2/B46.9/C45.7；均值+1.97/+1.20/+0.51；均优于原39.7%/+0.65%",
-    "s5_stock_strict": "调优池421笔 ABC胜率 A58.0/B49.7/C45.4；均值+2.10/+1.76/+0.64；与宽松共用胜率标定",
-    "s5_etf_loose":    "全量2935笔：A 52.9%(877)/+1.38% · B 45.9%(1297)/+0.66% · C 48.0%(715)/+0.65%",
-    "s5_etf_strict":   "全量471笔：A 45.9%(242)/+0.87% · B 48.9%(180)/+0.70% · C 63.3%(49)/+0.29%；胜率不排序",
-    "s6_stock":        "全量4346笔：A无样本 · B 40.6%(2522)/-0.10% · C 38.1%(1380)/-0.18% · D 36.0%(444)/-0.47%",
-    "s6_etf":          "ETF版评级尚未完成多年分层验证",
-    "s7_stock":        "全量3813笔：A 58.2%(1044)/+1.61% · B 52.4%(2469)/+0.88% · C 43.7%(300)/-0.06%；已按回测把原A/C对调",
-    "s11_vdb":         "调优池703笔 ABC胜率 A55.4/B53.2/C50.7；均值+2.45/+1.94/+1.83；均优于原46.9%/+1.46%",
-    "s11_vdb_strict":  "严格共用s11胜率标定评级；入场更干净缩量(≤0.45)+短回踩",
-    "s8_stock":        "全量1080笔：A 38.1%(21，极薄)/+1.15% · B 39.3%(516)/+0.28% · C 37.4%(543)/-0.10%",
-    "s9_stock":        "全量7591笔：A 33.9%(3456)/-0.11% · B 40.7%(3129)/-0.15% · C 40.6%(1006)/-0.23%；均值弱排序、胜率反序",
-    "s10_stock":       "调优池461笔 ABC胜率 A55.0/B54.1/C43.3；均值+2.90/+1.83/+1.66；均优于原46.1%/+0.90%",
-    "s10_etf":         "首中枢+GG回试：225笔·63.6%胜·+3.11%；第2中枢直接D；信号同板块高相关需去重",
+    "s5_stock_loose":  "A 52.2%/+1.97% · B 46.9%/+1.20% · C 45.7%/+0.51% · 胜率A>B>C",
+    "s5_stock_strict": "A 58.0%/+2.10% · B 49.7%/+1.76% · C 45.4%/+0.64% · 胜率A>B>C",
+    "s5_etf_loose":    "A 52.9%(877)/+1.38% · B 45.9%(1297)/+0.66% · C 48.0%(715)/+0.65% · 均值A>B≈C",
+    "s5_etf_strict":   "A 45.9%(242)/+0.87% · B 48.9%(180)/+0.70% · C 63.3%(49)/+0.29% · 胜率不排序",
+    "s6_stock":        "A 无 · B 40.6%(2522)/-0.10% · C 38.1%(1380)/-0.18% · D 36.0%(444)/-0.47%",
+    "s6_etf":          "ABC未完成多年分层验证",
+    "s7_stock":        "A 58.2%(1044)/+1.61% · B 52.4%(2469)/+0.88% · C 43.7%(300)/-0.06% · 胜率A>B>C",
+    "s8_stock":        "A 38.1%(21)/+1.15% · B 39.3%(516)/+0.28% · C 37.4%(543)/-0.10% · A样本极薄",
+    "s9_stock":        "A 33.9%(3456)/-0.11% · B 40.7%(3129)/-0.15% · C 40.6%(1006)/-0.23% · 胜率反序",
+    "s10_stock":       "A 55.0%/+2.90% · B 54.1%/+1.83% · C 43.3%/+1.66% · D 36.2%(130)/-1.66% · 胜率A>B>C>D",
+    "s10_etf":         "A 不破GG 63.6%(225)/+3.11% · B/C 仅过ZG 43.0%(79)/+1.24% · 第2中枢直接D",
+    "s11_vdb":         "A 55.4%/+2.45% · B 53.2%/+1.94% · C 50.7%/+1.83% · 胜率A>B>C",
+    "s11_vdb_strict":  "A 57.7%(175)/+1.49% · B 50.0%(88)/+1.37% · C 0 · 入场已缩≤0.45，实质只分A/B",
+    "s12_small_yang":  "放量离场 85.6%(1335)/+4.29% · 整体61.3% · 连阳天数差异不大，A看形态纯度",
+    "s12_small_yang_t2": "未涨透过滤后整体71.6%/+1.87%；资金少优先本档",
+    "s12_small_yang_t3": "条件略宽于2档，整体70.6%/+1.49%；票比2档多",
+    "s14_bottom_vol_yang": "评级按量比/底部深度/实体质量分层，待回测标定ABC",
+    "s15_limit_shrink_pull": "A 69.1%(162)/+0.48% · B 56.8%(2338)/+0.04% · C 54.4%(1608)/-0.19% · 胜率A>B>C",
 }
 
 CONCLUSION_NOTE = {
-    "s5_stock_loose":  "已调优：总胜49.4%/+1.51%(959笔)；结构宽于严格、过滤同思路；非上涨市标D观察。",
-    "s5_stock_strict": "已调优且不差于原口径：总胜49.6%/+1.37%(421笔)；ABC按胜率标定A>B>C；非上涨市标D观察。",
-    "s5_etf_loose":    "当前ETF主线：三种市场状态相对最稳，优先观察A档并按结构止损。",
-    "s5_etf_strict":   "ETF狙击版：信号少，上涨环境更好，可作为宽松版里的加分项。",
-    "s6_stock":        "上涨/震荡/下跌均无优势，六年总体负期望，dashboard入口已暂停。",
-    "s6_etf":          "ETF压缩蓄势样本不足、未分层验证，dashboard入口已暂停。",
-    "s7_stock":        "L2跌破止损；浮盈达到6%后收盘跌破MA5止盈。胜率最高但2023/2026仍为负，优先看A档和市场环境。",
-    "s11_vdb":         "已调优：总胜54.1%/+2.23%(703笔)；ABC按距低/缩量标定A>B>C；优先A(距≤4%)。",
-    "s11_vdb_strict":  "主看版：≥100亿+更干净缩量；勿深跌硬抄、勿嵌套二段追；破昨高不再作为硬门槛。",
-    "s8_stock":        "胜率/期望接近随机且A档样本极薄，dashboard入口已暂停。",
-    "s9_stock":        "三种市场状态均为负且A胜率最低，dashboard入口已暂停。",
-    "s10_stock":       "已调优且不差于原口径：总胜52.9%/+2.11%(461笔)；ABC按胜率标定A>B>C；非上涨市标D观察。",
-    "s10_etf":         "ETF主观察入口之一：首中枢+回试不破GG，出场按移动止损；与策略5 ETF互补，同板块勿叠仓。",
+    "s5_stock_loose":  "结构宽于严格，同思路过滤；优先A。非上涨市标D仅观察。",
+    "s5_stock_strict": "个股下单主看本档；优先A。非上涨市标D仅观察。",
+    "s5_etf_loose":    "ETF主线；优先A，按结构止损，同板块勿叠仓。",
+    "s5_etf_strict":   "ETF加分项；信号少，上涨环境更好，勿单独重仓。",
+    "s6_stock":        "三种市场均无优势，入口已暂停。",
+    "s6_etf":          "样本不足未验证，入口已暂停。",
+    "s7_stock":        "优先A；胜率高但2023/2026偏弱，结合市场环境。",
+    "s8_stock":        "期望接近随机，入口已暂停。",
+    "s9_stock":        "三种市场均为负，入口已暂停。",
+    "s10_stock":       "缠论严格笔中枢补充；优先A。非上涨市标D(回测36.2%/-1.66%)仅观察。",
+    "s10_etf":         "优先A(回试不破GG)；仅过ZG的降档观察。移动止损出场，同板块去重。",
+    "s11_vdb":         "补箱体盲区；优先A(距≤4%)，勿深跌硬抄。",
+    "s11_vdb_strict":  "优先A(距≤4%)；入场已很干净，C被滤光。勿嵌套二段追。",
+    "s12_small_yang":  "全A主板连小阳全量池(剔创业/科创)；票多仅观察。实盘看2/3档。",
+    "s12_small_yang_t2": "优先档：未涨透。放量≥2x跑，破窗低止损；票少适合小资金。",
+    "s12_small_yang_t3": "次优先：条件略宽。同样放量跑/破窗低止损。",
+    "s14_bottom_vol_yang": "收盘确认后次日开盘买；破信号低/底盘低止损，峰值回撤8%或超时离场。创业板默认可扫。",
+    "s15_limit_shrink_pull": "尾盘买。破昨低立刻走；次日放量跌或红盘离场；缩量跌再格局。优先A（昨涨停），B可做，C期望为负仅观察。不上涨背景过滤（MA60/周线会降胜率）。不进今早可买。",
 }
+
 
 
 def _secid(code, is_etf):
@@ -247,6 +282,14 @@ def _levels(strategy, hit):
     if strategy == "vdb_pullback":
         return {"VDB低(止损)": hit.get("stop"), "VDB高": hit.get("vdb_high"),
                 "回踩低": hit.get("buy_low")}
+    if strategy == "csi2000_small_yang":
+        return {"窗低": hit.get("win_low"), "止损": hit.get("stop")}
+    if strategy == "bottom_vol_yang":
+        return {"底盘低": hit.get("base_low"), "信号低": hit.get("sig_low"),
+                "止损": hit.get("stop")}
+    if strategy == "limit_shrink_pull":
+        return {"昨收": hit.get("prev_close"), "昨低(止损)": hit.get("prev_low"),
+                "止损": hit.get("stop")}
     return {}
 
 
@@ -397,7 +440,22 @@ def load_payload():
         s["conclusionNote"] = CONCLUSION_NOTE.get(s["key"], "")
         if not s.get("title"):
             s["title"] = VARIANTS[s["key"]][1]
+    meta = overnight_meta()
+    if meta:
+        payload["frozenDate"] = meta["frozenDate"]
+        payload["frozenAt"] = meta["frozenAt"]
     return payload
+
+
+def is_complete_session(latest, now=None):
+    """日K已经走完：昨收及更早，或当天 15:00 之后。开盘前跑昨收算收盘定论。"""
+    now = now or now_bj()
+    today = now.strftime("%Y-%m-%d")
+    if not latest:
+        return False
+    if latest < today:
+        return True
+    return latest == today and now.hour >= 15
 
 
 def _resummarize(payload):
@@ -420,7 +478,7 @@ def _resummarize(payload):
     payload["summary"] = {"total": total, "gradeA": ga, "gradeB": gb}
     payload["latestBar"] = latest
     payload["generatedAt"] = now.strftime("%Y-%m-%d %H:%M")
-    payload["closed"] = bool(latest == now.strftime("%Y-%m-%d") and now.hour >= 15)
+    payload["closed"] = is_complete_session(latest, now)
     payload["screenDate"] = os.environ.get("SCREEN_DATE", latest)
     return payload
 
@@ -444,27 +502,95 @@ def merge_section(section):
     return payload
 
 
+def _slim_watch(payload):
+    date = payload.get("latestBar") or payload.get("screenDate") or payload.get("date")
+    return {
+        "date": date,
+        "generatedAt": payload.get("generatedAt"),
+        "closed": bool(payload.get("closed")),
+        "summary": payload.get("summary") or {},
+        "sections": [{
+            "key": s.get("key"),
+            "title": s.get("title"),
+            "count": s.get("count"),
+            "is_etf": bool(s.get("is_etf") or "etf" in (s.get("key") or "")),
+            "hits": [{k: h.get(k) for k in HIT_SNAPSHOT_KEYS} for h in s.get("hits") or []],
+        } for s in payload.get("sections") or []],
+    }
+
+
+def normalize_snapshot_sections(payload):
+    for sec in payload.get("sections") or []:
+        key = sec.get("key") or ""
+        if "is_etf" not in sec:
+            sec["is_etf"] = "etf" in key
+        for h in sec.get("hits") or []:
+            h.setdefault("is_etf", sec["is_etf"])
+    return payload
+
+
+def overnight_meta():
+    if not os.path.isfile(OVERNIGHT_PATH):
+        return None
+    try:
+        with open(OVERNIGHT_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return {
+        "frozenDate": d.get("date"),
+        "frozenAt": d.get("generatedAt"),
+        "frozenClosed": bool(d.get("closed")),
+        "frozenSummary": d.get("summary") or {},
+    }
+
+
+def save_overnight_freeze(payload):
+    """仅收盘定论写入隔夜快照。盘中重跑不得调用。"""
+    if not payload.get("closed"):
+        return
+    slim = _slim_watch(payload)
+    slim["frozen"] = True
+    os.makedirs(os.path.dirname(OVERNIGHT_PATH), exist_ok=True)
+    with open(OVERNIGHT_PATH, "w", encoding="utf-8") as f:
+        json.dump(slim, f, ensure_ascii=False)
+
+
+def trading_days():
+    rows = cache_data.daily_kline("1.000001") or cache_data.daily_kline("0.000001") or []
+    return [r[0] for r in rows if r]
+
+
+def previous_trading_day(asof=None):
+    """今早可买的信号日：asof 之前最近一个交易日。默认今天。"""
+    asof = asof or now_bj().strftime("%Y-%m-%d")
+    days = [d for d in trading_days() if d < asof]
+    return days[-1] if days else None
+
+
 def snapshot_history(payload):
-    """按交易日存一份精简快照(不含K线), 最新覆盖当日。"""
+    """按交易日存精简快照。已收盘的日期禁止被盘中重跑覆盖。"""
     date = payload.get("latestBar") or payload.get("screenDate")
     if not date:
         return
     os.makedirs(HIST_DIR, exist_ok=True)
-    slim = {
-        "date": date,
-        "generatedAt": payload["generatedAt"],
-        "closed": payload["closed"],
-        "summary": payload["summary"],
-        "sections": [{
-            "key": s["key"], "title": s["title"], "count": s["count"],
-            "hits": [{k: h.get(k) for k in
-                      ("code", "name", "grade", "close", "chg", "gradeNote",
-                       "dist", "stage", "pull_days", "runup", "amt", "flags")}
-                     for h in s["hits"]],
-        } for s in payload["sections"]],
-    }
-    with open(os.path.join(HIST_DIR, f"{date}.json"), "w", encoding="utf-8") as f:
+    path = os.path.join(HIST_DIR, f"{date}.json")
+    new_closed = bool(payload.get("closed"))
+    if os.path.isfile(path) and not new_closed:
+        try:
+            with open(path, encoding="utf-8") as f:
+                old = json.load(f)
+            if old.get("closed"):
+                print(f"[watch_export] 跳过覆盖收盘快照 {date}（盘中重跑不进今早可买）",
+                      flush=True)
+                return
+        except (OSError, json.JSONDecodeError):
+            pass
+    slim = _slim_watch(payload)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(slim, f, ensure_ascii=False)
+    if new_closed:
+        save_overnight_freeze(payload)
 
 
 def list_history():
@@ -491,6 +617,72 @@ def get_history(date):
         return None
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def _read_watch_file():
+    if not os.path.exists(OUT_PATH):
+        return None
+    try:
+        with open(OUT_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def load_closed_snapshot(date):
+    """按日期取已收盘快照。盘中预览即使同日也不用。"""
+    if not date:
+        return None, None
+    hist = get_history(date)
+    if hist and (hist.get("closed") or is_complete_session(hist.get("date") or date)):
+        return normalize_snapshot_sections(hist), "history"
+    if os.path.isfile(OVERNIGHT_PATH):
+        try:
+            with open(OVERNIGHT_PATH, encoding="utf-8") as f:
+                over = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            over = None
+        if over and over.get("closed") and over.get("date") == date:
+            return normalize_snapshot_sections(over), "overnight"
+    return None, None
+
+
+def load_auction_watch():
+    """今早可买候选：上一交易日收盘快照，不读盘中 live watch_data。"""
+    signal = previous_trading_day()
+    payload, src = load_closed_snapshot(signal)
+    if payload is None:
+        live = _read_watch_file()
+        sd = (live or {}).get("screenDate") or (live or {}).get("latestBar")
+        if live and sd == signal and (live.get("closed") or is_complete_session(sd)):
+            return normalize_snapshot_sections(live), signal, "live-closed"
+        empty = {
+            "date": signal, "screenDate": signal or "", "latestBar": signal or "",
+            "closed": True, "sections": [], "summary": {},
+        }
+        return empty, signal, "missing"
+    payload.setdefault("screenDate", signal)
+    payload.setdefault("latestBar", payload.get("date") or signal)
+    return payload, signal, src
+
+
+def seed_overnight_from_history():
+    """启动时若还没有隔夜锁，用最近一份 closed 历史补上。"""
+    if os.path.isfile(OVERNIGHT_PATH):
+        return overnight_meta()
+    for it in list_history():
+        if not it.get("closed"):
+            continue
+        hist = get_history(it["date"])
+        if hist:
+            hist["closed"] = True
+            save_overnight_freeze(hist)
+            return overnight_meta()
+    live = _read_watch_file()
+    if live and live.get("closed"):
+        save_overnight_freeze(live)
+        return overnight_meta()
+    return None
 
 
 INDICES = [

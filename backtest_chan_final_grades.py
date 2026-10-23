@@ -12,6 +12,9 @@ PARSER = argparse.ArgumentParser()
 PARSER.add_argument("--etf", action="store_true")
 PARSER.add_argument("--assume-sub", action="store_true")
 PARSER.add_argument("--calibrate", action="store_true")
+# 对齐盯盘台 s10_stock 调优口径: 首中枢+lag≤2+risk≤12, 非上涨市标 D
+PARSER.add_argument("--tuned", action="store_true",
+                    help="filter stage1+lag<=2+risk<=12; mark non-up-market as D")
 ARGS = PARSER.parse_args()
 
 # These must be set before strategy_chan_final imports its signal module.
@@ -32,6 +35,42 @@ if os.environ.get("ABC_DATA_SOURCE") == "akshare":
 else:
     history_data = cache_data
 
+_UP_MAP = None
+
+
+def build_up_map():
+    """沪深300ETF: 站上MA20+MA60 且 ret20≥0 → 上涨市(与 watch_export 一致)。"""
+    rows = history_data.daily_kline("1.510300") or []
+    closes = [float(r[2]) for r in rows]
+    dates = [r[0] for r in rows]
+    out = {}
+    for i in range(60, len(rows)):
+        ma20 = sum(closes[i - 19:i + 1]) / 20
+        ma60 = sum(closes[i - 59:i + 1]) / 60
+        ret20 = closes[i] / closes[i - 20] - 1 if closes[i - 20] else 0.0
+        out[dates[i]] = bool(closes[i] >= ma20 and closes[i] >= ma60 and ret20 >= 0)
+    return out
+
+
+def is_up_market(trade_date):
+    global _UP_MAP
+    if _UP_MAP is None:
+        _UP_MAP = build_up_map()
+    return bool(_UP_MAP.get(trade_date, False))
+
+
+def trade_risk(trade):
+    stop = min(trade["low"], trade["zg"]) if trade.get("zg") else trade["low"]
+    return (trade["entry"] / stop - 1) * 100 if stop else 99.0
+
+
+def in_tuned_pool(trade):
+    return (
+        int(trade.get("stage", 0)) == 1
+        and int(trade.get("lag", 99)) <= 2
+        and trade_risk(trade) <= 12
+    )
+
 
 def grade_trade(trade, rows):
     dates = [r[0] for r in rows]
@@ -48,7 +87,11 @@ def grade_trade(trade, rows):
         "sub": "三买" if ARGS.assume_sub else "",
     }
     bars = rows[max(0, i - 59):i + 1]
-    return watch_grade.grade("chan_final", hit, bars)["grade"]
+    grade = watch_grade.grade("chan_final", hit, bars)["grade"]
+    # 个股调优: 非上涨市强制 D(与 watch_export.enrich_section 一致)
+    if ARGS.tuned and not ARGS.etf and not is_up_market(trade["date"]):
+        return "D"
+    return grade
 
 
 def calibration_features(trade, rows):
@@ -127,8 +170,17 @@ def main():
     if ARGS.calibrate:
         calibrate(trades)
         return
+    if ARGS.tuned and not ARGS.etf:
+        trades = [t for t in trades if in_tuned_pool(t)]
+        # 缓存/旧 grade 可能不含「非上涨市→D」; 统一覆盖
+        for t in trades:
+            if not is_up_market(t["date"]):
+                t["grade"] = "D"
     sub_name = "全假设30分共振" if ARGS.assume_sub else "无30分共振"
-    print(f"策略十·{pool_name}·{sub_name}  总体 {metric(trades)}")
+    tuned_tag = "·调优池+非上涨市D" if ARGS.tuned and not ARGS.etf else ""
+    print(f"策略十·{pool_name}·{sub_name}{tuned_tag}  总体 {metric(trades)}")
+    if ARGS.tuned and not ARGS.etf:
+        print(f"  非D出手: {metric([t for t in trades if t['grade'] != 'D'])}")
     for grade in "ABCD":
         selected = [t for t in trades if t["grade"] == grade]
         print(f"  {grade}: {metric(selected)}")

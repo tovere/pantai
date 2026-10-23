@@ -44,7 +44,7 @@ const strategies: StrategyRow[] = [
     totalWin: '52.9%',
     avgRet: '+2.11%',
     environment: '仅上涨市；首中枢+lag≤2+risk≤12%',
-    verdict: '样本放宽至461笔；ABC胜率A55.0/B54.1/C43.3，优于原46.1%/+0.90%',
+    verdict: '样本放宽至461笔；A55.0/B54.1/C43.3，D(非上涨市130笔)36.2%/-1.66%，优于原46.1%/+0.90%',
     state: 'conditional',
   },
   {
@@ -71,6 +71,28 @@ const strategies: StrategyRow[] = [
   },
   {
     rank: 6,
+    name: '策略12 连小阳2档',
+    type: '全A主板优先',
+    sample: 264,
+    totalWin: '71.6%',
+    avgRet: '+1.87%',
+    environment: '窗涨≤8% + 近20日跌 + 额0.3-1.2亿；放量≥2x跑',
+    verdict: '未涨透过滤；小资金优先本档。全量池仅观察',
+    state: 'preferred',
+  },
+  {
+    rank: 7,
+    name: '策略12 连小阳3档',
+    type: '全A主板次选',
+    sample: 490,
+    totalWin: '70.6%',
+    avgRet: '+1.49%',
+    environment: '窗涨≤8% + 近20日<5% + 额0.3-1.0亿；放量≥2x跑',
+    verdict: '条件略宽于2档，票更多；同样放量离场',
+    state: 'conditional',
+  },
+  {
+    rank: 8,
     name: '策略5 ETF严格',
     type: '狙击',
     sample: 471,
@@ -81,7 +103,7 @@ const strategies: StrategyRow[] = [
     state: 'conditional',
   },
   {
-    rank: 7,
+    rank: 9,
     name: '策略8 个股',
     type: '关闭',
     sample: 1080,
@@ -92,7 +114,7 @@ const strategies: StrategyRow[] = [
     state: 'paused',
   },
   {
-    rank: 8,
+    rank: 10,
     name: '策略5 个股严格',
     type: '条件',
     sample: 421,
@@ -103,7 +125,7 @@ const strategies: StrategyRow[] = [
     state: 'conditional',
   },
   {
-    rank: 9,
+    rank: 11,
     name: '策略5 个股宽松',
     type: '条件',
     sample: 959,
@@ -114,7 +136,7 @@ const strategies: StrategyRow[] = [
     state: 'conditional',
   },
   {
-    rank: 10,
+    rank: 12,
     name: '策略6 个股/ETF',
     type: '关闭',
     sample: 4346,
@@ -125,7 +147,7 @@ const strategies: StrategyRow[] = [
     state: 'paused',
   },
   {
-    rank: 11,
+    rank: 13,
     name: '策略9 个股',
     type: '关闭',
     sample: 7591,
@@ -134,6 +156,17 @@ const strategies: StrategyRow[] = [
     environment: '三种状态都偏弱',
     verdict: '三种状态均为负，入口已关闭',
     state: 'paused',
+  },
+  {
+    rank: 14,
+    name: '策略15 昨大涨今缩量回踩',
+    type: '新',
+    sample: 4108,
+    totalWin: '56.4%',
+    avgRet: '-0.03%',
+    environment: '主板非ST；昨涨停或≥6%；今缩量<0.80x且回踩跌幅≥-3%；尾盘买',
+    verdict: '收紧后胜率56.4%。A 69.1%/+0.48%，B贴零，C期望为负仅观察。不进今早可买',
+    state: 'weak',
   },
 ];
 

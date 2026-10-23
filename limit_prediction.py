@@ -58,6 +58,10 @@ def build():
                 continue
             next_day = calendar[j + 1] if j + 1 < len(calendar) else None
             ni = index.get(next_day)
+            now_local = datetime.now(timezone(timedelta(hours=8)))
+            # An unfinished session must not close the previous day's outcome.
+            if next_day == now_local.strftime("%Y-%m-%d") and now_local.hour < 16:
+                ni = None
             if next_day and (date_type.fromisoformat(next_day) - date_type.fromisoformat(day)).days > 10:
                 ni = None
             records[day].append({
@@ -205,7 +209,14 @@ def run():
     STATUS.update(running=True, error=None)
     try:
         from limit_pool import fetch
+        import cache_data
         today = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+        try:
+            snapshot = cache_data.snapshot_update()
+            if snapshot.get("blocked") or snapshot.get("trade_date") != today:
+                STATUS["error"] = "行情未刷新到今天，上方候选仍使用上次日线日期"
+        except Exception:
+            STATUS["error"] = "行情刷新失败，上方候选仍使用上次日线日期"
         try:
             fetch(today)
             from limit_sectors import capture

@@ -33,6 +33,15 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        name: 'WatchAuction',
+        path: '/watch/auction',
+        component: () => import('#/views/dashboard/auction/index.vue'),
+        meta: {
+          icon: 'lucide:sunrise',
+          title: '今早可买',
+        },
+      },
+      {
         name: 'WatchMarket',
         path: '/watch/market',
         component: () => import('#/views/dashboard/market/index.vue'),

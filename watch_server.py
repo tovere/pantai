@@ -20,6 +20,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import auction_open_screen
 import watch_export
 import limit_prediction
 import paper_agent
@@ -169,6 +170,38 @@ def _run_min_update():
                  finishedAt=watch_export.now_bj().strftime("%H:%M:%S"))
 
 
+def _run_auction(stage="final"):
+    key = "auction"
+    if _running(key):
+        return
+    label = "盯竞价(9:15-9:25)" if stage == "watch" else "今早可买(竞价叠加)"
+    _job_set(key, label=label, kind="auction", status="running",
+             done=0, total=100 if stage == "watch" else 1, pct=0, error=None,
+             note=None,
+             startedAt=watch_export.now_bj().strftime("%H:%M:%S"), finishedAt=None)
+
+    def cb(done, total, note=None):
+        kw = {"done": done, "total": total}
+        if note is not None:
+            kw["note"] = note
+        _job_set(key, **kw)
+
+    try:
+        if stage == "watch":
+            payload = auction_open_screen.watch_live(progress=cb)
+        else:
+            payload = auction_open_screen.run(stage=stage)
+        s = payload.get("summary") or {}
+        _job_set(key, status="done", done=s.get("total") or 1,
+                 total=s.get("total") or 1,
+                 finishedAt=watch_export.now_bj().strftime("%H:%M:%S"),
+                 error=payload.get("error"),
+                 note=payload.get("watchSkipped") or payload.get("preSettleAt"))
+    except Exception as e:
+        _job_set(key, status="error", error=str(e),
+                 finishedAt=watch_export.now_bj().strftime("%H:%M:%S"))
+
+
 def _spawn(target, *args):
     threading.Thread(target=target, args=args, daemon=True).start()
 
@@ -223,6 +256,8 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/market/indices":
             klt = (q.get("klt") or ["101"])[0]
             self._send(watch_export.market_indices(klt=klt))
+        elif p in ("/auction/open", "/auction/data"):
+            self._send(auction_open_screen.load_payload())
         elif p == "/watch/history":
             if q.get("date"):
                 d = watch_export.get_history(q["date"][0])
@@ -286,6 +321,12 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/min/update":
             _spawn(_run_min_update)
             self._send({"started": "m30:cache"})
+        elif p in ("/auction/run", "/auction/open"):
+            stage = (q.get("stage") or ["final"])[0]
+            if stage not in ("live", "final", "watch"):
+                return self._send({"error": "bad stage"}, 400)
+            _spawn(_run_auction, stage)
+            self._send({"started": "auction", "stage": stage})
         elif p == "/auth/login":
             self._send({**_USER, "accessToken": _TOKEN})
         elif p == "/auth/refresh":
@@ -300,6 +341,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    meta = watch_export.seed_overnight_from_history()
+    if meta:
+        print(f"[watch_server] 隔夜快照 {meta.get('frozenDate')} @ {meta.get('frozenAt')}")
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     _spawn(limit_prediction.daily_loop)
     import paper_live

@@ -23,6 +23,9 @@ MAX_LAG = int(os.environ.get("MAX_LAG", "4"))             # 买点确认后允�
 #   个股 低点<GG 反而更好(+1.03% vs +0.73%) -> 保持原文口径 0
 #   ETF  低点<GG 直接转负(-0.16%/36%胜 vs +2.19%/58%胜) -> 必须开 1
 PULLBACK_GG = os.environ.get("PULLBACK_GG", "0") != "0"
+# 离开段回吐上限: (离开高点-回踩低点)/(离开高点-离开起点)。0=关闭。
+# 原文 703 没写回吐比例, 但吐掉 70%+ 的离开段人眼已是失败离开, 不是回试中枢上沿。
+MAX_LEAVE_RETRACE = float(os.environ.get("MAX_LEAVE_RETRACE", "0.618") or 0)
 MAX_EXT_BUY = float(os.environ.get("MAX_EXT_BUY", "0.06"))  # 距买点低点已涨超此值 = 追高, 放弃
 DIV_AREA = float(os.environ.get("DIV_AREA", "0.85"))      # 背驰: C段柱面积 / A段
 DIV_DIF = float(os.environ.get("DIV_DIF", "0.95"))        # 背驰: C段黄白线幅度 / A段
@@ -220,7 +223,12 @@ def third_buy(st):
             continue                       # 没有明显离开中枢
         if pb["lo"] < Z["zg"] * (1 - ZG_TOL):
             continue                       # 回试跌回中枢 -> 中枢延伸, 不是三买
-        if PULLBACK_GG and pb["ep"] < Z["gg"]:
+        span = lv["ep"] - lv["sp"]
+        retrace = ((lv["ep"] - pb["lo"]) / span) if span > 0 else 0.0
+        cap = float(os.environ.get("MAX_LEAVE_RETRACE", "0.618") or 0)
+        if cap > 0 and retrace > cap:
+            continue                       # 离开段吐太深, 当失败离开而不是回试
+        if os.environ.get("PULLBACK_GG", "0") != "0" and pb["ep"] < Z["gg"]:
             continue                       # 严口径: 回试低点还得站在中枢实际顶部之上
         if le + 2 < len(bs):
             continue                       # 已经走出下一笔, 三买过时了
@@ -230,6 +238,10 @@ def third_buy(st):
             continue                       # 收盘必须仍在 ZG 之上
         if _ext(st, pb["ep"]) > MAX_EXT_BUY:
             continue
+        first = bs[Z["s"]]
+        zwidth = Z["gg"] / Z["dd"] - 1 if Z["dd"] else 0
+        entry_ratio = ((first["hi"] - first["lo"]) / (Z["zg"] - Z["zd"])
+                       if Z["zg"] > Z["zd"] else 0.0)
         return {
             "type": 3, "kind": "三买", "low": pb["ep"], "stop_ref": Z["zg"],
             "zg": Z["zg"], "zd": Z["zd"], "gg": Z["gg"], "dd": Z["dd"],
@@ -238,8 +250,9 @@ def third_buy(st):
             # 中枢形态: 跨度(K线根数)、活动区宽度、回试低点相对**实际顶部 GG** 的位置。
             # 504 规定 ZG=min(g1,g2) 只用前两段, 中枢越宽越长 ZG 就离 GG 越远,
             # "回试不破 ZG" 会松到肉眼看不出是三买 —— 这三个字段就是用来分档验证的。
-            "zdays": Z["ei"] - Z["si"], "zwidth": Z["gg"] / Z["dd"] - 1 if Z["dd"] else 0,
+            "zdays": Z["ei"] - Z["si"], "zwidth": zwidth,
             "gg_gap": pb["ep"] / Z["gg"] - 1 if Z["gg"] else 0,
+            "leave_retrace": retrace, "entry_ratio": entry_ratio,
         }
     return None
 

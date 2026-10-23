@@ -5,6 +5,15 @@ interface Prediction { code: string; height: number; close: number; probability:
 interface Result { generatedAt?: string; poolCapturedAt?: string; brokenCapturedAt?: string; brokenDate?: string; brokenItems?: {ticker: string; name: string; last_price: number; price_change_ratio_pct: number; open_times: number}[]; comparison?: {samples: number; baselineBrier: number; contextBrier: number; features: string; note: string}; outcomes?: {kind: string; group: string; samples: number; continued: number; touched: number; decent: number; redClose: number; gapDown: number; negative: number; avgNextReturn: number; start: string; end: string}[]; outcomeDefinition?: string; poolItems?: {ticker: string; name: string; continue_day_cnt: number; limit_up_reason: string; seal_money: number}[]; currentSectors?: {name: string; members: number; limitCount: number; limitPct: number; maxHeight: number}[]; stale?: boolean; poolDate?: string; status?: {running: boolean; error: string | null}; themes?: {theme: string; count: number; maxHeight: number}[]; date?: string; warnings: string[]; items: Prediction[]; calibration: {range: string; samples: number; predicted: number; actual: number}[]; history: Prediction[]; brier?: number }
 const data = ref<Result>();
 const error = ref('');
+const timeFormatter = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+function formatTime(value?: null | string) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : timeFormatter.format(date);
+}
 function formatSealMoney(value: null | number | undefined) {
   if (value == null || !Number.isFinite(value)) return '数据源未提供';
   const useYi = Math.abs(value) >= 100_000_000;
@@ -30,8 +39,9 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
     <el-alert v-if="error" :title="error" type="error" />
     <template v-if="data">
       <el-alert v-if="data.status?.error" :title="data.status.error" type="error" />
-      <p>交易时段每5分钟自动采集分析，页面每15秒同步 · 最近分析 {{ data.generatedAt || '—' }} · 涨停池采集 {{ data.poolCapturedAt || '—' }}</p>
-      <p>数据日期 {{ data.date || '—' }} · Brier {{ data.brier ?? '—' }}（越低越好）</p>
+      <p>交易时段每5分钟自动采集分析，页面每15秒同步 · 最近分析 {{ formatTime(data.generatedAt) }} · 涨停池采集 {{ formatTime(data.poolCapturedAt) }}</p>
+      <p>上方候选行情日期 {{ data.date || '—' }} · 当日涨停池 {{ data.poolDate || '—' }} · Brier {{ data.brier ?? '—' }}（越低越好）</p>
+      <p v-if="data.date && data.poolDate && data.date !== data.poolDate">上方概率表还停在 {{ data.date }} 的日线。点「更新本地分析」会先刷新今日行情，完成前这张表不会换成今天的涨停名单。</p>
       <p>候选以同日真实涨停池为准；概率是同连板高度历史组统计，同组相同，不是个股独立预测。</p>
       <el-table :data="data.items">
         <el-table-column prop="name" label="名称" min-width="100" /><el-table-column label="封板时间"><template #default="{row}">{{ row.sealTime || '数据源未提供' }}</template></el-table-column><el-table-column label="封单金额"><template #default="{row}">{{ formatSealMoney(row.sealMoney) }}</template></el-table-column><el-table-column label="涨停原因" min-width="200"><template #default="{row}">{{ row.reason || '数据源未提供' }}</template></el-table-column>

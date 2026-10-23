@@ -344,10 +344,11 @@ def grade_nzi(hit, bars):
 
 
 def grade_vdb_pullback(hit, bars):
-    """策略十一评级。
+    """策略十一评级(宽松/严格共用规则)。
 
-    调优池(≥200亿·缩≤0.50+距≤6+ret20≥0+剔反转)内按胜率标定:
+    宽松调优池(≥200亿·缩≤0.50+距≤6+ret20≥0+剔反转):
       dist≤4 → A(55.4%/+2.45%); shrink≤0.45 → B; 其余 C。
+    严格入场已卡缩≤0.45，回测实质只剩 A/B(A57.7%/B50.0%，C=0)。
     """
     flags, score = [], 0
     dist = _f(hit.get("dist_vdb"))
@@ -451,7 +452,8 @@ def grade_chan_final(hit, bars):
 
     个股: 在调优池(首中枢+lag≤2+risk≤12+上涨市)内按胜率标定 ABC:
       lag==2 → A; risk>4 → B; 其余 C。旧联合模型排期望不排胜率, 个股停用。
-    ETF: 仍用结构分 + 第2中枢直接 D。
+    ETF: 首中枢池内按是否站上 GG 分档(放宽入场后):
+      回试不破GG → A(63.6%/+3.11%); 仅过ZG → 偏弱(43%/+1.24%); 第2中枢直接 D。
     """
     flags, score = [], 0
     stage = int(hit.get("stage", 1))
@@ -459,6 +461,12 @@ def grade_chan_final(hit, bars):
     lag = int(hit.get("lag", 0))
     amt = _f(hit.get("amt"))
     sub = hit.get("sub") or ""
+    gg_gap = hit.get("gg_gap")
+    if gg_gap is not None:
+        try:
+            gg_gap = float(gg_gap)
+        except (TypeError, ValueError):
+            gg_gap = None
 
     is_etf = bool(hit.get("is_etf"))
     if stage == 1:
@@ -473,6 +481,14 @@ def grade_chan_final(hit, bars):
     elif stage >= 3:
         score -= 1
         flags.append({"text": f"#{stage}中枢·晚期(样本仅10笔)", "type": "warn"})
+
+    if is_etf and gg_gap is not None:
+        if gg_gap >= 0:
+            score += 2
+            flags.append({"text": "回试不破GG·胜率甜区", "type": "good"})
+        else:
+            score -= 1
+            flags.append({"text": f"仅过ZG未过GG({gg_gap:+.1f}%)", "type": "warn"})
 
     if sub:
         score += 1
@@ -514,11 +530,27 @@ def grade_chan_final(hit, bars):
         flags.append({"text": "放量滞涨·上方派发", "type": "bad"})
 
     has_bad = any(flag["type"] == "bad" for flag in flags)
-    joint_grade = False
 
     if is_etf:
-        g = _decide(score, flags)
-    elif has_bad:
+        # 放宽入场后用 GG 分档, 不再只靠结构分(否则扩样本后分不出甜区)
+        if has_bad:
+            g = "B" if score >= 2 else "C"
+        elif gg_gap is not None and gg_gap >= 0:
+            g = "A"
+        elif gg_gap is not None and gg_gap < 0:
+            g = "B" if score >= 2 else "C"
+        else:
+            g = _decide(score, flags)
+        note = (
+            "回试不破GG, ETF下单级别"
+            if g == "A"
+            else ("仅过ZG未过GG —— 观察偏弱" if gg_gap is not None and gg_gap < 0
+                  else ("命中但盘口减分 —— 观察不追" if has_bad
+                        else "ETF候选, 结构尚可"))
+        )
+        return {"grade": g, "score": score, "flags": flags, "note": note}
+
+    if has_bad:
         g = "B" if score >= 1 else "C"
     elif lag == 2:
         # 调优池内 lag=2: 62.1%胜/+2.42%
@@ -539,6 +571,257 @@ def grade_chan_final(hit, bars):
         note = "偏弱: 止损过近易洗或确认偏早" if not is_etf else "偏弱: 中枢序号靠后或止损偏远"
     return {"grade": g, "score": score, "flags": flags,
             "note": note + "。⚠️三买是慢信号(回测持有<5天为负, 10天后才转正), 别当天进出"}
+
+
+def grade_csi2000_small_yang(hit, bars):
+    """全A主板连小阳评级。
+
+    回测(放量≥2x窗均量离场, 原中证2000样本): 整体约61%/+0.7%; 仅放量离场85.6%/+4.3%。
+    连阳天数胜率差异不大, 按形态纯度分层方便盯盘优先看干净票。
+    """
+    flags, score = [], 0
+    streak = int(hit.get("streak", 0) or 0)
+    small_n = int(hit.get("small_n", 0) or 0)
+    yang_n = int(hit.get("yang_n", 0) or 0)
+    net = _f(hit.get("net"))
+    avg_chg = _f(hit.get("avg_chg"))
+    avg_body = _f(hit.get("avg_body"))
+    max_chg = _f(hit.get("max_chg"))
+    vol_ratio = _f(hit.get("vol_ratio"))
+    amt = _f(hit.get("amt"))
+    chg = _f(hit.get("chg"))
+
+    if streak >= 8 and small_n >= 8:
+        score += 3
+        flags.append({"text": "8连纯小阳", "type": "good"})
+    elif streak >= 8:
+        score += 2
+        flags.append({"text": f"8连阳·小阳{small_n}", "type": "good"})
+    elif streak >= 7:
+        score += 2
+        flags.append({"text": f"{streak}连阳", "type": "good"})
+    elif streak >= 6:
+        score += 1
+        flags.append({"text": f"{streak}连阳", "type": "good"})
+    else:
+        flags.append({"text": f"{streak}连阳", "type": "warn"})
+
+    if small_n >= yang_n and yang_n >= 6:
+        score += 1
+        flags.append({"text": "窗口几乎全小阳", "type": "good"})
+    elif small_n <= yang_n - 2:
+        flags.append({"text": "夹杂偏大阳", "type": "warn"})
+
+    if 5 <= net <= 12:
+        score += 1
+        flags.append({"text": f"窗涨温和(+{net:.0f}%)", "type": "good"})
+    elif net > 18:
+        score -= 1
+        flags.append({"text": f"窗涨偏大(+{net:.0f}%)", "type": "warn"})
+
+    if avg_body <= 1.5 and avg_chg <= 1.5:
+        score += 1
+        flags.append({"text": "爬升很慢", "type": "good"})
+
+    if max_chg >= 5:
+        score -= 1
+        flags.append({"text": f"单日偏大(+{max_chg:.1f}%)", "type": "warn"})
+
+    if vol_ratio >= 2.0:
+        score -= 1
+        flags.append({"text": f"今日已放量({vol_ratio:.1f}x)·或已到离场点", "type": "warn"})
+    elif vol_ratio >= 1.5:
+        flags.append({"text": f"量能抬头({vol_ratio:.1f}x)", "type": "warn"})
+    else:
+        flags.append({"text": "量仍安静·等放量跑", "type": "good"})
+
+    if amt >= 1.5:
+        score += 1
+        flags.append({"text": "流动性尚可", "type": "good"})
+    elif amt < 0.3:
+        score -= 1
+        flags.append({"text": "成交偏稀", "type": "warn"})
+
+    if chg < 0:
+        flags.append({"text": "今日收阴", "type": "warn"})
+
+    if _rejection(bars):
+        score -= 2
+        flags.append({"text": "冲高回落", "type": "bad"})
+
+    has_bad = any(f["type"] == "bad" for f in flags)
+    if has_bad:
+        g = "D"
+    elif streak >= 8 and small_n >= 7 and score >= 4:
+        g = "A"
+    elif streak >= 7 or (streak >= 6 and small_n >= 6 and score >= 3):
+        g = "B"
+    else:
+        g = "C"
+
+    if g == "A":
+        note = "连小阳很干净, 优先盯; 放量离场"
+    elif g == "B":
+        note = "连小阳成立, 候选; 破窗低止损, 放量跑"
+    elif g == "D":
+        note = "盘口减分, 仅观察"
+    else:
+        note = "形态偏弱或涨幅/阳线不够纯, 观察"
+    return {"grade": g, "score": score, "flags": flags, "note": note}
+
+
+def grade_bottom_vol_yang(hit, bars):
+    """底部放量第一根大阳评级。信号已确认形态，评级看强度与盘口质量。"""
+    flags, score = [], 0
+    chg = _f(hit.get("chg"))
+    vol_ratio = _f(hit.get("vol_ratio"))
+    body = _f(hit.get("body"))
+    ret20 = _f(hit.get("ret20"))
+    pos60 = _f(hit.get("pos60"))
+    bias60 = _f(hit.get("bias60"))
+    amt = _f(hit.get("amt"))
+
+    if vol_ratio >= 5:
+        score += 3
+        flags.append({"text": f"爆量{vol_ratio:.1f}x", "type": "good"})
+    elif vol_ratio >= 3:
+        score += 2
+        flags.append({"text": f"放量{vol_ratio:.1f}x", "type": "good"})
+    elif vol_ratio >= 2:
+        score += 1
+        flags.append({"text": f"放量{vol_ratio:.1f}x", "type": "good"})
+
+    if chg >= 9.5:
+        score += 2
+        flags.append({"text": f"大阳+{chg:.1f}%", "type": "good"})
+    elif chg >= 7:
+        score += 1
+        flags.append({"text": f"阳线+{chg:.1f}%", "type": "good"})
+
+    if body >= 7:
+        score += 1
+        flags.append({"text": "实体厚实", "type": "good"})
+    elif body < 5:
+        flags.append({"text": "实体一般", "type": "warn"})
+
+    if ret20 <= -15:
+        score += 2
+        flags.append({"text": f"深超跌({ret20:.0f}%)", "type": "good"})
+    elif ret20 <= -5:
+        score += 1
+        flags.append({"text": f"偏弱底({ret20:.0f}%)", "type": "good"})
+    elif ret20 > 0:
+        flags.append({"text": f"前20日未跌({ret20:.0f}%)", "type": "warn"})
+
+    if pos60 <= 20:
+        score += 1
+        flags.append({"text": "贴60日低区", "type": "good"})
+    elif pos60 > 35:
+        score -= 1
+        flags.append({"text": "位置偏高", "type": "warn"})
+
+    if bias60 <= -10:
+        score += 1
+        flags.append({"text": "远低于MA60", "type": "good"})
+
+    if amt >= 1.0:
+        score += 1
+        flags.append({"text": "流动性尚可", "type": "good"})
+    elif amt < 0.3:
+        score -= 1
+        flags.append({"text": "成交偏稀", "type": "warn"})
+
+    if _rejection(bars):
+        score -= 2
+        flags.append({"text": "冲高回落", "type": "bad"})
+
+    has_bad = any(f["type"] == "bad" for f in flags)
+    if has_bad:
+        g = "D"
+    elif score >= 7 and vol_ratio >= 3 and ret20 <= -5:
+        g = "A"
+    elif score >= 4:
+        g = "B"
+    else:
+        g = "C"
+
+    if g == "A":
+        note = "底部爆量大阳干净, 次日开盘可跟; 破止损走人"
+    elif g == "B":
+        note = "形态成立, 候选; 次日开盘买, 注意高开不追"
+    elif g == "D":
+        note = "盘口减分, 仅观察"
+    else:
+        note = "量/底/实体偏弱, 观察"
+    return {"grade": g, "score": score, "flags": flags, "note": note}
+
+
+def grade_limit_shrink_pull(hit, bars):
+    """昨大涨今缩量回踩。尾盘买；破昨低/放量跌/红盘走。
+
+    A 只给昨涨停且分项够干净（收紧后约 69% 胜）；B 昨≥7 或缩量干净；其余 C。
+    """
+    flags, score = [], 0
+    prev_chg = _f(hit.get("prev_chg"))
+    chg = _f(hit.get("chg"))
+    shrink = _f(hit.get("vol_shrink"))
+    amt = _f(hit.get("amt"))
+    limit = int(hit.get("limit") or 0) or (prev_chg is not None and prev_chg >= 9.9)
+
+    if limit:
+        score += 3
+        flags.append({"text": f"昨涨停({prev_chg:.1f}%)", "type": "good"})
+    elif prev_chg is not None and prev_chg >= 7:
+        score += 2
+        flags.append({"text": f"昨大涨+{prev_chg:.1f}%", "type": "good"})
+    elif prev_chg is not None:
+        score += 1
+        flags.append({"text": f"昨涨+{prev_chg:.1f}%", "type": "good"})
+
+    if shrink is not None and shrink <= 0.50:
+        score += 2
+        flags.append({"text": f"缩量很干净({shrink:.2f}x)", "type": "good"})
+    elif shrink is not None and shrink <= 0.70:
+        score += 1
+        flags.append({"text": f"缩量({shrink:.2f}x)", "type": "good"})
+    elif shrink is not None:
+        flags.append({"text": f"缩量偏弱({shrink:.2f}x)", "type": "warn"})
+
+    if chg is not None and chg > -1.5:
+        score += 1
+        flags.append({"text": f"回踩浅({chg:+.1f}%)", "type": "good"})
+    elif chg is not None and chg < -2.5:
+        flags.append({"text": f"回踩偏深({chg:+.1f}%)", "type": "warn"})
+    elif chg is not None:
+        flags.append({"text": f"回踩{chg:+.1f}%", "type": "good"})
+
+    if amt is not None and amt >= 1.0:
+        score += 1
+        flags.append({"text": "流动性尚可", "type": "good"})
+    elif amt is not None and amt < 0.5:
+        flags.append({"text": "成交偏稀", "type": "warn"})
+
+    if _rejection(bars):
+        score -= 1
+        flags.append({"text": "冲高回落", "type": "warn"})
+
+    # A: 昨涨停 + 分项够（浅回踩/缩干净/流动性，约 70% 胜）
+    # B: 分够 4，或昨≥7 且缩量≤0.70
+    # C: 昨刚过 6、缩量偏弱
+    if limit and score >= 5:
+        g = "A"
+    elif score >= 4 or (prev_chg is not None and prev_chg >= 7 and shrink is not None and shrink <= 0.70):
+        g = "B"
+    else:
+        g = "C"
+
+    if g == "A":
+        note = "昨涨停今缩量回踩干净, 尾盘可跟; 破昨低走人"
+    elif g == "B":
+        note = "形态成立, 尾盘候选; 放量跌/红盘离场, 缩量跌再格局"
+    else:
+        note = "昨涨刚过线或缩量一般, 观察"
+    return {"grade": g, "score": score, "flags": flags, "note": note}
 
 
 def grade(strategy, hit, bars):
@@ -566,4 +849,10 @@ def grade(strategy, hit, bars):
         return g
     if strategy == "nzi_reversal":
         return grade_nzi(hit, bars)
+    if strategy == "csi2000_small_yang":
+        return grade_csi2000_small_yang(hit, bars)
+    if strategy == "bottom_vol_yang":
+        return grade_bottom_vol_yang(hit, bars)
+    if strategy == "limit_shrink_pull":
+        return grade_limit_shrink_pull(hit, bars)
     return {"grade": "C", "score": 0, "flags": [], "note": ""}

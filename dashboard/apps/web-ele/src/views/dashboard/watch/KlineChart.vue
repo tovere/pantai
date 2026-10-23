@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { WatchBar } from '#/api/watch';
 
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 
 import { EchartsUI, type EchartsUIType, useEcharts } from '@vben/plugins/echarts';
 
@@ -24,12 +24,13 @@ function ma(n: number, closes: number[]): (number | string)[] {
   });
 }
 
-onMounted(() => {
+function paint() {
   const bars = props.bars || [];
   const defaultWindow = 100;
-  const zoomStart = bars.length > defaultWindow
-    ? +(((bars.length - defaultWindow) / bars.length) * 100).toFixed(2)
-    : 0;
+  const zoomStart =
+    bars.length > defaultWindow
+      ? +(((bars.length - defaultWindow) / bars.length) * 100).toFixed(2)
+      : 0;
   const dates = bars.map((b) => b[0].slice(5)); // MM-DD
   // ECharts 蜡烛图数据: [开, 收, 低, 高]
   const kdata = bars.map((b) => [b[1], b[2], b[4], b[3]]);
@@ -182,7 +183,19 @@ onMounted(() => {
     ],
   };
   renderEcharts(option);
-});
+}
+
+onMounted(paint);
+// 重跑/快刷后 bars 会变, 但展开行组件常不销毁 —— 必须 watch, 否则K线停在旧末日(如07-28)
+watch(
+  () => [
+    props.bars?.length ?? 0,
+    props.bars?.at(-1)?.[0],
+    props.bars?.at(-1)?.[2],
+    JSON.stringify(props.levels || {}),
+  ],
+  paint,
+);
 </script>
 
 <template>
